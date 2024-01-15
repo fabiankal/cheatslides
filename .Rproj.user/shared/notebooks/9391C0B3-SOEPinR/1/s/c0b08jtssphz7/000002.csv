@@ -1,0 +1,5 @@
+"0","modelplot(list(""model1""=mylm1, ""model2""=mylm2, ""model3""=mylm3), vcov = ""robust"") +
+  lab(x=""Coefficient estimates and h-robust 95% confidence intervals"")
+"
+"2","Error in sanitize_models(models, ...) : object 'mylm2' not found
+"

@@ -1,0 +1,6 @@
+.scroll-100 {
+  max-height: 50px;
+  overflow-y: auto;
+  background-color: inherit;
+  overflow-x:scroll
+}

@@ -1,0 +1,6 @@
+"0","  # scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + # provide different axis scaling"
+"0","  # theme(legend.position=""right"")  # change position of the legend "
+"0","  # guides(fill=guide_legend(ncol=1,byrow=TRUE)) # change ordering of legend"
+"0","```"
+"2","Error: attempt to use zero-length variable name
+"

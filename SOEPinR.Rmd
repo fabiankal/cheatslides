@@ -1,0 +1,1138 @@
+---
+title: "'cheat slides' for empirical research in R"
+subtitle: "with SOEP data"
+author: "Fabian Kalleitner"
+institute: "FU Berlin"
+date: "2023/12/22 (updated: `r Sys.Date()`)"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    self_contained: true
+    nature:
+      #highlightLanguage: r
+      highlightStyle: xcode
+      highlightLines: true
+      countIncrementalSlides: false
+---
+class: inverse, center, middle
+
+<style type="text/css">
+
+body, td {
+   font-size: 14px;
+}
+code.r{
+  font-size: 13px;
+}
+pre {
+  font-size: 13px
+}
+
+pre {
+  white-space: pre;
+  background: #F5F5F5;
+  max-width: 100%;
+  max-height: 35%;
+  overflow-y:auto;
+}
+
+</style>
+
+
+```{css, echo=FALSE}
+.scroll-100 {
+  max-height: 50px;
+  overflow-y: auto;
+  background-color: inherit;
+  overflow-x:scroll
+}
+```
+
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+#xaringan::inf_mr() -> to see slides in viewer pane
+library("DiagrammeR")
+library("fontawesome")
+library("ggplot2")
+library("dplyr")
+
+#background-image: url(https://upload.wikimedia.org/wikipedia/commons/b/be/Sharingan_triple.svg)
+#???
+
+#Image credit: [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Sharingan_triple.svg)
+
+#```
+
+#class: center, middle
+
+# How to analyze your research question in R
+## (using data from the SOEP)
+
+### A short introduction by: 
+### Fabian Kalleitner
+```
+
+# Get Started
+
+---
+# Preparing the file location I
+
+The following is not strictly necessary but strongly recommended and the file location information will be based on the structure as described below:
+
+- Before initiating our R project / file we want to establish a baseline folder structure
+
+- Every researcher has different preferences here but I would recommend the following
+
+- Start with a folder named after your project. I will call it: *soep_wealth* 
+  - as a general rule avoid any blanks or special characters (e.g. ß, ö, *, %, ...) in the folder names or the file names
+  
+- create four folders within this folder: *data*, *code*, *output*, *manuscript*
+
+- within the folder *data* create two folders: *raw*, *processed*
+
+- within the folder *output* create two folders: *tab*, *fig*
+
+---
+# Preparing the file location II
+
+The final folder structure should look like this: 
+
+`r fa("folder", fill = "steelblue")` *soep_wealth*
+- `r fa("folder", fill = "steelblue")` *data* 
+  - `r fa("folder", fill = "steelblue")` *raw* 
+  - `r fa("folder", fill = "steelblue")` *processed*
+- `r fa("folder", fill = "steelblue")` *code*
+- `r fa("folder", fill = "steelblue")` *output* 
+  - `r fa("folder", fill = "steelblue")` *tab* 
+  - `r fa("folder", fill = "steelblue")` *fig*
+- `r fa("folder", fill = "steelblue")` *manuscript*
+
+Using this folder structure helps you keep everything nice and tidy.
+
+As a general rule I put my paper manuscript in the *manuscript* folder (e.g. .doc or .tex files) and have the unedited data files in the *data* sub-folder *raw*. The purpose of the other folders should be self-explanatory.
+
+Note that you could also upload this project folder on **GitHub** (an online version control system). A How-to Guide can be found [here](https://www.geo.uzh.ch/microsite/reproducible_research/post/rr-rstudio-git/). 
+
+---
+# Working with the file location
+
+The main advantage of a defined folder structure is the ability to use **relative** instead of **absolute file paths**. Hence, all paths specified should be relative to the main project file path that can be located anywhere on your system. 
+
+You can find an extensive discussion on file paths and how to deal with them in R [here](https://www.r4epi.com/file-paths).
+
+Important commands (read without "", commands should also work on Mac): 
+  - `"."` indicates the current working directory. Note you can also skip `"."` meaning you can write "./data" or "data" to access the data folder from the working directory
+  - `".."` goes one level higher. E.g., you can access the project folder using ".." if your current working directory is the code folder
+  - `"/"` functions as a separator to indicate different folder levels. E.g., "../data" would access the data folder from the code folder. 
+  - `"getwd()"`reads out the current working directory 
+  - `"setwd()"`would set a new working directory manually
+
+Normally R will use the first file the R session started with as your working directory, if you use an R project you specify the working directory directly (see also next slide).
+
+---
+
+# Starting your R project
+
+Basically we have three options to start our R project after we created the folder structure:
+
+<small>
+
+1. Generate a new R Script: `File -> New File -> R Script` & save it in the `code` directory `File -> Save As...`
+  - R Scripts are "dumb" they are only used to store R Code for later use. We do not distinguish between Code and Text and cannot create markdown files with them
+  
+1. Generate a new R Markdown file: `File -> New File -> R Markdown -> OK` & save it in the `code` directory `File -> Save As...`
+  - R Markdown files have a Header, Code Chunks, and the rest is text (an R Notebook is a dynamic R Markdown file that will automatically try to compile every Code Chunk upon changes). You can find an intro to R Markdown here: [Link](https://bookdown.org/yihui/rmarkdown/)
+  
+1. Generate a new Project: `File -> New Project -> Existing directory -> Browse [& choose the project root directory] --> Create Project`
+  - R Projects have their own R environment meaning they store which files were open in your R session this helps separating your projects
+  - R Projects can also be connected to GitHub and thus easily stored online 
+
+</small>  
+---
+
+# R packages
+
+Much of the comparative advantage of R over other statistical software derives from free to use packages created by the R community.
+
+Some of the most important packages for our use are: 
+
+- *tidyverse*: a package of packages including especially readr, ggplot2, and dplyr 
+- *haven*: to load "foreign" data formats such as SPSS .sav files and STATA .dta files and use their capability to store variable and value labels 
+- *srvyr*: to apply survey weights to data, 
+- *fixest*: to estimate fixed effects analyses - alternative: plm, 
+- *data.table*: a dplyr alternative that computes faster but more difficult syntax
+- *marginaleffects*: a package to calculate the ominous marginal effects (alternative: ggeffects)
+- *gtsummary*: a package to create summary tables (alternative: stargazer)
+
+
+---
+
+# Install & load packages
+
+An easy way to load this packages is to include their names in a vector and utilize a small function that only installs these packages if they are not already installed using `installed.packages()` and afterwards loads all questions with `library()`. 
+
+<small>
+```{r packages, include=TRUE,eval=FALSE}
+libraries = c("haven","tidyverse","srvyr",..)
+
+#install packages if not installed
+lapply(libraries, function(x) if (!(x %in% installed.packages())){
+  install.packages(x)
+})
+
+#load libraries
+lapply(libraries, library, quietly = TRUE, character.only = TRUE)
+```
+</small> 
+
+---
+# Import data
+
+To import different forms of data we need different functions depending on the file format (note that you can always find more information on a specific function by typing `?` and the function name into the console, e.g.:`?read_delim()`):
+
+- **Comma separated files (.csv)** or other text files with a simple delimiter: readr::read_delim()
+  - `data <- read_delim(filepath, delim=",", col_names = TRUE)`
+- **SPSS datasets (.sav files)**: haven::read_sav()
+  - `data <- read_sav(filepath)`
+- **STATA datasets (.dta files)**: haven::read_dta()
+  - `data <- read_dta(filepath)`
+- **EXCEL datasets (.xls/.xlsx files)**: readxl::read_excel()
+  - `data <- read_excel(filepath)` 
+  
+<small> 
+
+Note that `haven::read_sav()` indicates that `read_sav()` stems from the haven package. This is just to inform you about the source. In the code you do not need to specify the package if you use a function if their are no conflicts (multiple loaded packages contain functions with the same name). If this is the case you simply type `haven::read_sav()` and R uses the `read_sav()` function of the `haven` package. Note that *readr* and *readxl* are part of the *tidyverse*. 
+</small> 
+
+---
+class: inverse, center, middle
+
+# Loading SOEP data
+
+---
+# The starting point: tracking files
+
+The SOEP data comes in the form of several different data files in STATA .dta format. Refer to the [SOEP companion](http://companion.soep.de/Data%20Structure%20of%20SOEPcore/Data%20Distribution.html) for more information.
+
+A recommended way to start importing data is by selecting the target sample using the appropriate *tracking files*. In this simplified introduction I will only mention two of these (see this [link](http://companion.soep.de/Data%20Structure%20of%20SOEPcore/Data%20Sets.html) for more details):
+
+<small> 
+  - **ppathl**: Individual Tracking File in long format (see also [paneldata.org/ppathl](https://paneldata.org/soep-core/datasets/ppathl/)) 
+    - contains all individuals participating in the SOEP = one line for each unique person and survey year. 
+    - contains information to identify this person and match it to a specific household, partner, and survey-year (*pid, hid, cid, syear, parid*) (see also [paneldata.org/identifier](http://companion.soep.de/Data%20Structure%20of%20SOEPcore/Data%20Identifier.html))
+    - contains basic socio-demographic information of this person (e.g.: *birthyear, sex, migback,...*)  
+    - contains basic information on the survey status of this person in a given year meaning what data has been collected and how this person was sampled (e.g.: *netto, pop,...*)
+    - contains important weighting factors (e.g.: *phrf, pbleib,...*)
+    
+    
+  - **hpathl**: Household Tracking File in long format (see also [paneldata.org/hpathl](https://paneldata.org/soep-core/datasets/hpathl/)) 
+    - contains all households participating in the SOEP 
+    - important identifiers: *hid, cid, syear*
+</small> 
+
+---
+# Loading information of the target sample
+
+If our main (lowest) level of analyses is the year specific individual we will start by loading in the tracking information on the person specific level using the `read_dta` command and selecting the information we need:
+```{r loadtrackingdata, include=TRUE,eval=FALSE}
+
+path_data <- "./data" #expects that the project folder is the working directory
+
+data <- read_dta(file = file.path(path_data, 'ppathl.dta'),
+                 col_select = c(cid, pid, hid, syear, #identifiers
+                                psample, pop, netto, #survey characteristics
+                                sex, gebjahr, migback,sampreg, #socio-demographics
+                                phrf, pbleib) #weighting factors
+                )
+```
+<small>
+Note that one could also read in the full information of *ppathl* by skipping `col_select`.
+</small> 
+
+---
+# Selecting the target sample
+
+Next we can select the target sample using information on the survey years, the survey status, and the socio-demographic characteristics of specific persons. 
+
+Here it is advisable to keep the dataset as small as needed (subsetting the data now will speed up the analyses later).
+
+Example: Target Population = Person interviews of the working-age population living in private households after the German reunification:
+```{r selectingtargetsample, include=TRUE,eval=FALSE}
+
+data <- data %>% 
+  filter(netto>=10, netto<=19,# select only data of persons who successfully filled out a person-specific interview in the given year
+         gebjahr <= (syear-15), # of working-age  
+         gebjahr >= (syear-68), 
+         pop <= 2, # living in a private household
+         syear>1991,)  # after the German reunification)
+summary(data$netto) # e.g. check netto in the final sample
+```
+<small>
+Note that one could also read in the full information of *ppathl* by skipping `col_select`.
+</small> 
+
+---
+# Quick tip: loading dataset labels
+We can read out the variable label using functions from the *haven* package.
+```{r readlabels, include=TRUE,eval=FALSE}
+var_label(data$netto) # variable label of netto (=variable description)
+val_labels(data$netto) # value labels of netto 
+```
+To read out the labels of an entire dataset we write our own function:
+```{r storelabels, include=TRUE,eval=FALSE}
+storelabels <- function(from){
+  data_lab  <- read_dta(file = file.path(path_data, paste0(from, '.dta')))
+  labelsum  <-data_lab %>%  
+    summarise(variable=names(.),
+              label=var_label(.),
+              values=val_labels(.)) %>% 
+    mutate(label=as.character(label),
+           values=as.character(values)) 
+  return(labelsum)
+}
+hpathl_l <- storelabels('hgen') #store labels from hpathl and show them afterwards
+view(hpathl_l) #--> shows the full data table in a new tab
+```
+<small>
+Note that you only have to execute a function once per R Session to be able to use it. Because sorelabels loads the full dataset it is quite time consuming, so if possible avoid using it and look at the documentation instead --> see for hgen: [paneldata.org/hgen](https://paneldata.org/soep-core/datasets/hgen/)
+</small> 
+
+---
+# Loading information from other datasets
+
+In a next step we will use the tracking information of the target sample to add information from other datasets of the SOEP. 
+
+For this purpose we will again create our own small function that will load the new dataset and match it to our existing dataset using the appropriate identifiers (keys).
+
+This **attachVariable** function will expect 4 variables: 
+  - vars: what variables should be added, 
+  - from: dataset that contains these variables, 
+  - to:   dataset that should afterwards contain these variables
+  - keys: identifiers to match the appropriate data (persons, households etc.) in the two datasets 
+<small>
+```{r attachVariable, include=TRUE,eval=FALSE}
+attachVariable <- function(vars, from, to, keys){ 
+  data_new  <- read_dta(file = file.path(path_data, paste0(from, '.dta')), #read the dataset containing the additional variables
+                        col_select = c(sapply(keys, paste), sapply(vars, paste))) # select the needed variables
+  to <- left_join(to,data_new, by = keys) # match the new variables to the target dataset using the appropriate identifiers (keys)
+  return(to) # return the final extended dataset as the result of the function
+}
+```
+
+---
+
+# Loading additional data: Examples
+
+Example 1: add information on labor force status from the dataset **pgen**
+
+```{r loadingaddinfo1, include=TRUE,eval=FALSE}
+data_new <- attachVariable(vars = c('pglfs','pglabnet'), # take the variables pglfs & pglabnet
+                           from = 'pgen', # from the dataset pgen
+                           to = base_ego, # add it to the existing dataset base_ego
+                           keys = c('pid', 'syear')) # using the identifiers pid, & syear
+```
+Example 2: add information on total net household income from the dataset **hgen**
+
+```{r loadingaddinfo2, include=TRUE,eval=FALSE}
+data_new <- attachVariable(vars = c('hghinc'), # take the variable hghinc
+                           from = 'hgen', # from the dataset hgen
+                           to = base_ego, # add it to the existing dataset base_ego
+                           keys = c('hid', 'syear')) # using the identifiers hid, & syear
+```
+<small>
+Note that the second example overwrites the first one because we are again using **base_ego** as the starting dataset. If we do not want to overwrite it we have to use **data_new** as our starting dataset in Example 2. 
+</small> 
+
+---
+class: inverse, center, middle
+
+# Data preprocessing 
+
+---
+
+# Data cleaning: Missing values
+<small>
+Survey datasets contain two general types of missing data: 
+ - unit missings/non-response: a person/household is not willing or able to participate in the survey although this person would be in the target sample
+ - item missings/non-response: a specific item (question) has not been answered by a person/household
+
+To deal with unit non-response, researchers often apply different strategies of weighting the data. 
+
+To deal with item non-response, researchers also have different strategies available but most commonly simply drop those cases where one or more variables of interest are missing. This approach is called listwise deletion of missing values and expects that the data is missing fully at random (or missing at random and the explanatory variables of the probability of missing values are controlled for by the research design or the analytical strategy/modelling approach). 
+
+Missing values are indicated by negative values in the SOEP. This is defined [here](http://companion.soep.de/Data%20Structure%20of%20SOEPcore/Missing%20Conventions.html).
+
+A non-response "No answer/don’t know" is indicated by -1. But as specified in the documentation there are many more reasons for missing values like that a specific question was not asked to a specific person (e.g. questions to children to an adult) or because a specific question was not part of the questionnaire in that given year, etc.
+</small> 
+---
+
+# Check the reason for missing values I
+<small>
+Before declaring missing values you should get an overview why specific items are missing either by using the documentation or by creating graphs or tables of the missing values ourself. Let's look at the variable **plh0258_h** *church, religion [harmonised]* for example.
+</small> 
+
+<img src="https://git.soep.de/szimmermann/soepgraphics/-/raw/v38/Grafiken/pl/en/plh0258_h.png"
+     width="600px" height="300px"
+     style="position:absolute; left:80px; top:240px;">
+     
+$~$
+
+$~$
+
+$~$
+
+$~$
+
+$~$
+
+$~$
+
+$~$
+
+$~$
+<small>
+As one can see this variable is not included in the questionnaire until the year 1990. In this year and in several others it has been asked to the full population. In contrast in the year 2016 and several others it has been asked only to a predominantly non-Christian subsample of the population. Image credit: [paneldata.org](https://paneldata.org/soep-core/datasets/pl/plh0258_h)
+</small>
+---
+
+# Check the reason for missing values II
+<small>
+We can create this visualization on our own. Note that this example is complicated now but you will learn later on about how to calculate proportions an create visualizations. 
+</small>
+```{r misfig, include=TRUE,eval=FALSE, class.output="scroll-100"}
+# Create a function that plots missing data of variable "var" from a certain dataframe "from"
+getmissmap <- function(from,var){ 
+  var <- enquo(var) #needed for programming reasons
+  
+#create table of valid proportions of a variable within each year
+  plotdata <- from %>% #base dataset
+    drop_na(!!var,syear) %>% #the !! are only needed because we use dplyr functions within a function
+    filter(!!var>=0) %>% # drop missing values in the grouping variable (not needed if this is done before)
+    group_by(!!var,syear,) %>% # declare how the proportions should be calculated (grouped)
+    summarise(n=n()) %>% # how much valid cases are existing per group
+    group_by(syear) %>%
+    mutate(prop = n/sum(n)) # calculate share/proportion of factor within group 
+
+#create table of missing values of a variable within each year
+  plotmissi <- from %>% #base dataset
+    drop_na(!!var,syear) %>%
+    mutate(var_n=ifelse(!!var<0,!!var,1)) %>% # note that this not store the labels --> use if_else instead
+    group_by(var_n,syear) %>% 
+    summarise(n=n()) %>% 
+    group_by(syear) %>%
+    mutate(prop = n/sum(n)) 
+
+#plot the two graphs and combine them
+  p1<- ggplot(plotdata, aes(fill=as_factor(!!var),x=syear, y=prop)) + 
+    geom_bar(position="stack", show.legend = TRUE,stat = "identity", width=0.7) +
+    scale_fill_brewer(palette = "Set3", direction =-1) +  #alternative:Blues
+    labs(y = "", x= "",fill="",title="") +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+    theme_classic() +
+    theme(legend.position="right") + 
+    guides(fill=guide_legend(ncol=1,byrow=TRUE)) +
+    scale_x_continuous(guide = guide_axis(angle = 90),breaks=seq(1984,2021,1),limits=c(1984,2021))
+  
+  p2<- ggplot(plotmissi, aes(fill=as_factor(var_n),x=syear, y=prop)) + 
+    geom_bar(position="stack", show.legend = TRUE,stat = "identity", width=0.7) +
+    scale_fill_brewer(palette = "Set1", direction =-1) +  #alternative:Blues
+    labs(y = "", x= "",fill="",title="") +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+    theme_classic() +
+    theme(legend.position="bottom") + 
+    guides(fill=guide_legend(nrow=2,byrow=TRUE)) +
+    scale_x_continuous(guide = guide_axis(angle = 90),breaks=seq(1984,2021,1),limits=c(1984,2021))
+  
+  px<-p1+p2 +  plot_layout(ncol = 1,heights = c(4, 1)) # I use the *patchwork* package here to combine two ggplots
+  
+    return(px) # return the final extended dataset as the result of the function
+}
+#call the new function: example plot the variable sex located in the data-frame base_ego
+getmissmap(base_ego, sex)
+
+```
+<small>
+Or we can quickly show some informative tabulations. Here I am using the example of household income **hghinc**:
+</small>
+```{r mistab, include=TRUE,eval=FALSE}
+# tabulate the missing (negative) values of hghinc using its labels
+table(as_factor(base_ego$hghinc[base_ego$hghinc<0])) 
+
+# tabulate the percentages of missing values "-1 = no answer/don't know" by years 
+prop.table(table(base_ego$hghinc!=-1,base_ego$syear),margin = 2) 
+```
+---
+
+# Data cleaning: Declare missing values
+
+In R missing values are generally indicated by `NA` = "not available". Hence, we will change the negative values to be missing an thus `NA`.
+
+Most calculations with an `NA` result in `NA`. Hence, `1 + NA = NA`. Thus, if we drop cases with missing values in future calculations (e.g. by `na.rm = TRUE` when calculating means) R will automatically apply listwise deletion of missing values for us. 
+
+```{r declmiss, include=TRUE,eval=FALSE}
+base_ego <- mutate_at(data_new, vars(c( "pid", "hid", "syear", "psample", "pop", "netto", # mutate_at() changes all variables listed in vars
+                                        "sex", "migback", "sampreg",  "phrf", "pbleib","pglfs",
+                                        "hnetto","hbleib","hhrf","hsample","hpop" ,"hghinc")),
+                  list(~ ifelse( . %in% c(-8:-1), NA, .))) # apply the following function to a variable in the list of variables if between -8 and -1 and make it NA otherwise leave it unchanged 
+```
+Note, you can also transform all variables using `mutate_all()` or `colwise()` instead of `mutate_at(vars)`.
+
+---
+# Data cleaning: Drop missing values
+
+If we do intend to only use the full valid cases in our sample anyway we can also drop these cases to get an **analytical sample** from our *target sample* containing only those individuals who have non-missing information in our variables of interest in a given year. 
+
+```{r listwisedel, include=TRUE,eval=FALSE}
+# drop all rows containing missing values in the dataset
+base_ego_c <- base_ego %>% drop_na() 
+
+# drop all rows containing missing values in the columns "sampreg" and "hghinc"
+base_ego_c <- base_ego %>% drop_na(c("sampreg", "hghinc")) 
+
+```
+---
+class: inverse, center, middle
+
+# Data recoding
+
+In the following I will give examples of simple forms of variable recoding that are usually necessary before analysing the data. 
+
+---
+
+# Data recoding - Create dummies
+
+Create dummies = 0/1 indicators that show whether something is true or not.
+
+Example an indicator for living currently in the territory of former West-Germany = 1 (vs. East-Germany=0).
+
+```{r recdummy, include=TRUE,eval=FALSE}
+base_ego_c <- base_ego_c %>% mutate(westg = ifelse(is.na(base_ego_c$sampreg),NA, # make NA if it is NA (most often not necessary)
+                                            ifelse(base_ego_c$sampreg == 1, 1 , 0)) # make 1 if sampreg is 1
+                                    )
+base_ego_c$westg<-as.factor(base_ego_c$westg) # declare the variable to be a factor
+levels(base_ego_c$westg)<-c("East Germany","West Germany") # attach value labels to the factor levels
+
+table(base_ego_c$westg,base_ego_c$sampreg,useNA = "always") # check whether we recoded correctly 
+```
+
+---
+# Data recoding - Calculate ordinal factor from larger factor
+
+Create a simple factor level indicators from more detailed measurements.
+
+Example an indicator for an individual's current employment status using 5 categories (self)-employed, unemployed, in education, retired, rest.
+
+```{r recfactor, include=TRUE,eval=FALSE}
+base_ego_c <- base_ego_c %>% mutate(empl5 = ifelse(pglfs == 11 | pglfs == 12  | pglfs == 13 , 0,
+                                            ifelse(pglfs == 6, 1,
+                                            ifelse(pglfs == 3, 2,
+                                            ifelse(pglfs == 2, 3,
+                                            ifelse(pglfs == 2|pglfs == 4|pglfs == 5|pglfs == 8|pglfs == 9|pglfs == 10,4,NA)))))
+                                    )
+base_ego_c$empl5<-as.factor(base_ego_c$empl5) # declare the variable to be a factor
+levels(base_ego_c$empl5)<-c("(self)-employed", "unemployed", "in education", "retired", "rest") # attach value labels to the factor levels
+
+table(base_ego_c$empl5,base_ego_c$pglfs,useNA = "always") # check whether we recoded correctly 
+```
+
+---
+# Data recoding - calculate factor from continuous
+
+Create a simple factor level indicators from more a continuous measurement.
+
+Example an indicator for an individual's age group using 5 categories  <18, 18-35, 36-65,>65.
+```{r recfactor2, include=TRUE,eval=FALSE}
+base_ego_c <- base_ego_c %>% mutate(age = syear-gebjahr, # gebjahr is the year of birth we can create mutlible variables in one mutate sperating the commands with ","
+                                    age_c = ifelse(age < 18, 0,
+                                            ifelse(age >= 18 & age < 36, 1,
+                                            ifelse(age >= 36 & age < 66, 2,
+                                            ifelse(age >= 66, 3,NA))))
+                                    )
+base_ego_c$age_c<-as.factor(base_ego_c$age_c) # declare the variable to be a factor
+levels(base_ego_c$age_c)<-c("<18", "18-35", "36-65", ">65") # attach value labels to the factor levels
+table(base_ego_c$age_c,base_ego_c$age,useNA = "always") # check whether we recoded correctly 
+```
+
+---
+# Data recoding - calculate continous indicator from other continous
+
+Example, calculate relative contribution to the household income
+
+```{r reccont1, include=TRUE,eval=FALSE}
+base_ego_c <- base_ego_c %>% mutate(relcontr = (pglabnet/hghinc)*100) #relative contribution in percent 0-100 
+```
+Continuous variables are often difficult to tabulate. An easy alternative is to look at whether the distribution seems reasonable compared to the distributions of the initial variables:
+
+```{r reccont2, include=TRUE,eval=FALSE}
+hist(pglabnet)
+hist(hghinc)
+hist(relcontr)
+```
+Note that only people with a job have a labor income **pglabnet** that is non missing. If we want to calculate relative incomes also for persons which are not participating in the labor market we would have to recode **pglabnet** first.
+---
+# Data recoding - calculate spouse's relative income within a two earner households
+
+```{r recspouse, include=TRUE,eval=FALSE}
+base_ego_p<-base_ego |> select (pid,syear,sex,parid,pglabnet,hid) # select relevant variables
+
+npartner <- base_ego_p |> filter (parid<0) #create dataset of those without a partner
+
+base_ego_p <- base_ego_p |> filter (parid>0) #create dataset of those with a partner
+
+partner<- base_ego_p %>% select(-c(parid)) %>% rename(parid=pid, #duplicate partner dataset and change variable names
+                                                         parhid=hid,
+                                                         partnersex=sex,
+                                                         partnerinc=pglabnet)
+
+mergepart <- left_join(partner,base_ego_p,by=c("parid","syear")) %>% #merge the base and partner dataset
+  bind_rows(npartner) #add those without partner
+
+mergepart <- mergepart |> mutate(rel_par_inc=pglabnet/(pglabnet+partnerinc)) 
+# note that this creates a lot of missing values also because people not employed are coded as missing an income and not as having an income of 0
+
+```
+<small>
+Note that I use the newer base R pipe *|>* here. This is nearly equivalent to the dplyr pipe *%>%*. This is just to show you can use both. I recommend using the updated version in the future but you will account many older examples with the "old" dplyr pipe. 
+</small>
+---
+# Data analyses descriptives (proportion)
+
+Calculate the unweighted proportion of certain variables including confidence intervals.
+For the statistical formalities refer to [link](https://stats.libretexts.org/Courses/Rio_Hondo_College/Math_130%3A_Statistics/07%3A_Confidence_Intervals/7.02%3A_Confidence_Interval_for_a_Proportion). 
+Example: Proportion of people in West-Germany by year
+
+```{r calcsharesunw, include=TRUE,eval=FALSE}
+
+#calculate shares of westg = 1 vs. westg = 0 within survey years
+
+plotdata.westg <- base_ego_c %>% #base dataset
+  drop_na(westg,syear) %>% # drop missing values in the grouping variable (not needed if this is done before)
+  group_by(westg,syear) %>% # declare how the proportions should be calculated (grouped)
+  summarise(n=n()) %>% # how much valid cases are existing per group
+  group_by(syear) %>%
+     mutate(prop = n/sum(n), # calculate share/proportion of factor within group
+            se=sqrt((prop*(1-prop))/sum(n)),
+            ymax=prop+qnorm(0.975)*se, # calculate confidence interval of share
+            ymin=prop-qnorm(0.975)*se
+            )
+```
+
+---
+# Data analyses descriptives (means)
+
+Calculate the unweighted means of certain variables including confidence intervals.
+For the statistical formalities refer to [link](https://stats.libretexts.org/Courses/Rio_Hondo_College/Math_130%3A_Statistics/07%3A_Confidence_Intervals/7.03%3A_Confidence_Interval_for_a_Mean).
+Example: Mean of person net income in West vs. East by year.
+
+```{r calcmeansunw, include=TRUE,eval=FALSE}
+
+plotdata.westg <- base_ego_c %>% #base dataset
+  drop_na(westg,syear) %>% # drop missing values in the grouping variable (not needed if this is done before)
+  group_by(westg,syear) %>% # declare how the means should be calculated (grouped)
+  summarise(n=n(), # how much valid cases are existing per group
+             mean=mean(pglabnet , na.rm = T), # what is the mean of pglabnet within this group
+             sd=sd(pglabnet, na.rm = T)) %>% # what is the standard deviation of pglabnet within this group
+  mutate(se=sd/sqrt(n), # calculate the standard error using the standard deviation and the number of observations within the group
+          ymin=mean - se * qt(0.975, n-1),
+          ymax=mean + se * qt(0.975, n-1),# calculate the 1/2 confidence interval for alpha = 0.05
+          type="unweighted") # you can add any other indicator etc. by yourself for later use: here i add a variable type that has the value "unweighted"
+```
+
+If you want to calculate household level means with person level (like the mean in household income *hghinc*) data you have to add `group_by(syear) %>% distinct(hid, .keep_all = TRUE)`. To only keep one datapoint per household per year to avoid biasing your data by household size and not underestimate the confidence intervals. 
+
+---
+# Data analyses descriptives (weighted proportions)
+
+Calculate the cross-sectionally weighted proportions of certain variables including confidence intervals. Uses the command `as_survey_design()` from the *srvyr* package.
+Example: Proportion of people in West-Germany by year, weighted.
+
+```{r calcshareswei, include=TRUE,eval=FALSE}
+
+plotdata.westg.w2 <- base_ego %>% #base dataset
+  drop_na(westg,syear) %>% # drop missing values in the grouping variable (not needed if this is done before)
+  as_survey_design(weights = c(phrf)) %>% # weight data using the survey weights provided
+  group_by(syear,westg) %>% # group the data by grouping variable and the variable containing the proportions of interest (in this example westg)
+  summarise(prop = survey_prop())%>%
+  mutate(ymax=prop+qnorm(0.975)*prop_se,
+         ymin=prop-qnorm(0.975)*prop_se)
+```
+
+---
+
+# Data analyses descriptives (weighted means)
+
+Example: Mean of person net income in West vs. East by year, weighted.
+
+```{r calcmeanswei, include=TRUE,eval=FALSE}
+
+plotdata.westg.w <- base_ego_c %>% #base dataset
+  drop_na(westg,syear)  %>% # drop missing values in the grouping variable (not needed if this is done before)
+  as_survey_design(weights = c(phrf)) %>% # weight data using the survey weights provided
+  group_by(westg,syear) %>% # state the grouping variables
+  summarise( n=n(), # count number of cases within groups
+             mean=survey_mean(pglabnet , na.rm = T)) %>% #calculate weighted means
+  mutate(ymax=mean + mean_se * qt(0.975, n-1), # calculate the 1/2 confidence interval for alpha = 0.05
+         ymin=mean - mean_se * qt(0.975, n-1)) 
+```
+
+---
+# Calculating longitudinal weights
+<small>
+For a balanced sample that you want to observe over time you can calculate longitudinal weights to account for differences in the staying probability (attrition) of different individuals or households. Although useful these longitudinal weights are rarely used in practice.
+
+Effectively this code calculates the longitudinal weights using the cross-sectional start weight *phrf* and multiplying it with the subsequent staying probability of the following years *pbleib*. Meaning that the longitudinal weight of 2008 a balanced sample starting in the year 2005 is given by: $plong_{2008}=phrf_{2005}*pbleib_{2006}*pbleib_{2007}*pbleib_{2008}$
+
+Note, the following function returns a dataset that contains the longitudinal weight in the variable *p_weight_n*. For calculating household weights instead of person weights simply exchange *phrf* with *hhrf*, *pbleib* with *hbleib* and *pid* with *hid*.
+</small>
+```{r longitudinal weights, include=TRUE,eval=FALSE, class.output="scroll-100"}
+#note that you have to calculate these weights before filtering years to be able to create panel trend weight for balanced analyses of a specific start and end year: here start 2005 & end 2020
+
+calcpweight <- function(dataset, styear, enyear){ #creates a function that calculates the weight using the dataset and a specific start and endyear
+  dataset<-dataset %>% mutate(p_weight=ifelse(syear==styear,phrf,NA),
+                      p_weight_n=p_weight)
+
+  for (x in 1:(enyear-styear)) {
+    print(x)
+    dataset <- dataset %>%
+      group_by(pid) %>%
+      arrange(syear) %>%
+      mutate(next.score = tidytable::lead(pbleib, n=x),
+             p_weight_n=p_weight_n*next.score
+             )
+  } 
+  paneldata2 <- dt_fill(dataset, p_weight_n, id = "pid", .direction = "downup") %>% distinct(pid,.keep_all = TRUE)
+  paneldata2$p_weight_n_f<-paneldata2$p_weight_n
+  
+  dataset <- left_join(dataset,paneldata2%>%select(pid,p_weight_n_f), by = "pid")
+  
+  dataset$p_weight_n_f <- ifelse(dataset$syear<startyear|dataset$syear>endyear,NA,dataset$p_weight_n_f)
+  
+  dataset<-dataset%>%select(-c('p_weight','next.score','p_weight_n')) %>%ungroup()
+  
+  return(dataset) # returns the new dataset that now includes p_weight_n which are the longitudinal weights for the balanced sample within the specified start and endyear
+}
+
+startyear=2005
+endyear=2020
+
+data <- calcpweight(data,startyear,endyear)
+```
+
+---
+class: inverse, center, middle
+
+# Data analyses - descriptive graphs
+
+In the following I provide a short intro to ggplot2 and provide some examples how to use it. 
+
+---
+# GGPLOT I
+<small>
+**ggplot2** (part of tidyverse) has a very distinct but easy to learn and use syntax to build *graphs*. It basically maps data on a plane and thus can easily stack different types of graphs and even datasets on top of each other. Nearly every ggplot follows the same base syntax:
+</small>
+```{r graph1, include=TRUE,eval=TRUE,fig.show="hold",out.width="25%"}
+# example uses the R example dataset "cars"
+#Figure 1
+ggplot(data=cars, aes(x=speed, y=dist)) # provide the dataset, create an empty plane and map the data (aes="Construct aesthetic mappings")
+#Figure 2
+ggplot(data=cars, aes(x=speed, y=dist)) + 
+geom_point() # adds the geom (=geometric object) and maps it as specified in aes() earlier
+#Figure 3
+ggplot(data=cars, aes(x=speed, y=dist)) + 
+geom_point() + # we could add further aes mappings specific to the geom_point object here (e.g. color, shape, etc.)
+geom_smooth(method="lm",formula=  y~x) # adds a second geom that computes a linear trend line automatically
+```
+
+---
+
+# Data analyses descriptive graphs IIa
+
+Before you can plot most of the graphs with ggplot you have to calculate the things you want to plot (e.g. means by subgroup, proportions, etc.). Hence, aggregate beforehand (e.g. with dplyr) and plot the data afterwards. 
+
+In addition the data should be in long format. Meaning every categorical variable should be stored in a separate column using a ordinal indicator while the data itself is in a single column. (If you use dplyr use group_by for every category you want to differentiate: e.g. for year, and sex calculate means by (syear, age)).
+
+For a quick reminder what the difference between a long and wide data format is see the appendix of this slides [here](https://fabiankal.github.io/slides/SOEPinR.html#35).
+
+---
+
+# Data analyses descriptive graphs IIb
+
+Here is an example that aggregates data first and then plots it.
+```{r graph2, include=TRUE,eval=TRUE,fig.show="hold",out.width="30%"}
+means<-mtcars %>% group_by(am) %>% # uses the R example dataset "mtcars"
+  summarise(mean=mean(mpg),sd=sd(mpg),n=n()) %>%
+  mutate(se=sd/sqrt(n),ymin=mean - se * qt(0.975, n-1),ymax=mean + se * qt(0.975, n-1),
+         am=as.factor(am)) # aggregate the data
+#Figure 1
+ggplot(data=means, aes(x=am,y=mean)) + # provide the aggregated dataset to ggplot and map the appropriate variables
+ geom_col(aes(fill =am)) # add the appropriate geom. Tip: use geom_bar if you want to stack shares within a group
+#Figure 2
+ggplot(data=means, aes(x=am,y=mean)) + 
+ geom_col(aes(fill =am)) + 
+  geom_errorbar(aes(ymin=ymin,ymax=ymax)) # add error bars
+#Figure 3
+ggplot(data=means, aes(x=am,y=mean)) + # provide the aggregated dataset to ggplot and map the appropriate variables
+ geom_pointrange(aes(ymin=ymin,ymax=ymax,color=am)) # change geom to points+ pointrange
+```
+---
+# Data analyses descriptive graphs III
+<small>
+There are many more geoms and each come with different possibilities to map data on them. Here is a nice website with many different examples inclusive R codes: [link](https://r-graph-gallery.com/index.html). Example of important tweaks:
+</small>
+```{r graph3, include=TRUE,eval=TRUE,fig.show="hold",out.width="30%"}
+ggplot(data=cars, aes(x=speed, y=dist)) + 
+  geom_point() + 
+  geom_smooth(method="lm",formula=  y~x) + 
+  theme_classic(base_size=16) + #change look of the graph and increase base text size of everything
+  labs(x="Speed",y="Breaking distance") + # change different labels (also title and legend title)
+  scale_fill_brewer(palette = "Set1") +  #provide different color scheme
+  scale_x_continuous(guide = guide_axis(angle = 90),breaks=seq(1,25,1),limits=c(0,27)) # provide different axis specifications
+  # scale_y_continuous(labels = scales::percent_format(accuracy = 1)) + # provide different axis scaling
+  # theme(legend.position="right")  # change position of the legend 
+  # guides(fill=guide_legend(ncol=1,byrow=TRUE)) # change ordering of legend
+```
+---
+# Missing values and balance
+Creating an analytical sample from the target sample (selecting only those whose answers can be used) can create biases. One way to check the likelyhood of these biases is to check wether the analytical sample is stat. significantly different from the target sample for relevant factors: covariates, iv, dv. (Note, that this only provides a hint and no differences are not a gurantee for no bias.)
+
+I use the *vtable* package to quickly create a balance table that shows mean differences between dropped and nondropped samples using the `sumtable` function. 
+
+A simple explanation on the use of the `sumtable` and the interpretation of the output can also be found in this [youtube video](https://www.youtube.com/watch?v=tQredW74x_o). 
+
+```{r graph4, include=TRUE,eval=FALSE,fig.show="hold",out.width="30%"}
+#This should only be used for missing values due to item nonresponse: SOEP codes -1&-3 
+#Thus, only for persons who actually got the question but refused to answer or provided implausible answers.
+
+base_ego<- base_ego %>% mutate(dropped=ifelse(base_ego$pid %in% base_ego_c$pid,0,1)) # creates an indicator for the rows dropped
+# note that you have to convert every factor into a factor before using sumtable
+base_ego$migback<-as_factor(base_ego$migback) # converts migback into a factor
+sumtable(base_ego,group="dropped",group.test=TRUE) # creates a balance table with X2 tests for factors and F/T tests for continuous variables
+
+#crosstable(base_ego,by="dropped", test=TRUE, funs=c(mean=mean, "std error"=sd)) %>% as_flextable() # other option using the crosstable & flextable packages
+```
+
+---
+class: inverse, center, middle
+
+#Cross-sectional data analyses
+Base R lm function. From ugly output to nice publishable tables. Calculating robust standard errors & creating coefficient plots. 
+
+---
+# Cross-sectional data analyses at a specific time point
+
+After subsetting the data to create the analytical sample and recoding the variables and specifying their character (factors) one can start calculating the regression model(s).
+
+The basic function for calculating OLS regressions is *lm*.
+
+It is structured in the following way: `mylm <- lm(DV ~ IV + CV1 + .., data)`. 
+
+This saves the output as a list object `mylm` which enables you to create a simple summary output using `summary(mylm)`
+
+```{r cross1, include=TRUE,eval=FALSE,fig.show="hold",out.width="30%"}
+mylm1 <- lm(hghinc ~ sex + migback, data=base_ego_c %>% filter(syear==2010)) # select data only of one year and provide the model
+summary(mylm1)
+
+#to calculate a logit model for a binary dependent Variable "DV" you can use the glm command (note that simply calculating a linear probability model might often be an optimal approach instead)
+#logit<-glm(DV ~ pgfamstd, data=base_ego_c %>% filter(syear==2010), family = binomial(link = "logit"))
+#to get odds ratios: logit.or = exp(coef(logit))
+#for probit use link = "probit", 
+#other commands: ordered logit: MASS::polr , multinominal regression: nnet::multinom
+```
+---
+# Creating a publishable regression table
+To create regression tables with one or multiple models, I use the **msummary()** function from the *modelsummary* package.
+
+The formatting options are immense and you can find detailed information on the package's website: [https://modelsummary.com/](https://modelsummary.com/). Modelsummary can also calculate (cluster) robust standard errors for you using the `vcov` option.
+
+A commonly used alternative is the *stargazer* package. However, the package has some limitations and is not longer updated regularly so I avoid its use in the future. 
+
+```{r cross2, include=TRUE,eval=FALSE,fig.show="hold",out.width="30%"}
+
+msummary(list("model1"=mylm1, "model2"=mylm2, "model3"=mylm3)) # shows the table in the viewer pane
+
+msummary(list("model1"=mylm1), vcov = list("classical")) #classical iid standard errors
+msummary(list("model1"=mylm1), vcov = "robust") # robust standard errors HC3
+msummary(list("model1"=mylm1), vcov = "stata") # robust standard errors HC1
+
+msummary(list("model1"=mylm1, "model2"=mylm2, "model3"=mylm3), output="./output/tab/regtable1.docx") # creates a Word document with containing the table
+
+stargazer(mylm1,mylm2,mylm3, type="text", out="./output/tab/regtable1.docx")
+
+```
+---
+# Creating a publishable coefficient plot
+Another way to show regression results is by plotting a coefficient plot of the most important variables across the models. 
+
+This can easily be done with the **modelplot** function of the *modelsummary* package. 
+
+The created plot can be customized with 'ggplot2' functions.
+
+```{r cross3, include=TRUE,eval=FALSE,fig.show="hold",out.width="30%"}
+
+modelplot(list("model1"=mylm1, "model2"=mylm2, "model3"=mylm3), vcov = "robust") # plot regression coefficients with robust standard errors
+
+modelplot(list("model1"=mylm1, "model2"=mylm2, "model3"=mylm3), vcov = "robust") +
+  labs(x="Coefficient estimates and 95% confidence intervals (HC3)") # change x-axis title
+
+# use the option coef_omit to only show the variable(s) of interest
+modelplot(list("model1"=mylm1, "model2"=mylm2, "model3"=mylm3), vcov = "robust",
+          coef_omit = "sex|Intercept")
+```
+
+---
+
+class: inverse, center, middle
+# Longitudinal data analyses
+
+Variances, Pooled OLS, FD-estimator, Fixed-Effects Regression, Random-Effects Regression
+---
+
+# Investigating within and between variance
+
+For 2-FE analyses it is important that within individual variance is existing in the analytical sample. This means that the variables of interest are changing over time within the relevant units (e.g. persons, household, etc.). A simple way to check within-unit variance over time (compared to overall and between variance) is provided in **STATA** with the *XTSUM* function. The following function provides the code to create a similar table in **R**. 
+
+```{r xtsum, include=TRUE,eval=FALSE,fig.show="hold",out.width="30%"}
+
+XTSUM <- function(data, varname, unit) {
+  # Xtsum
+  varname <- enquo(varname)
+  loc.unit <- enquo(unit)
+  ores <- data %>% summarise(Mean=mean(!! varname, na.rm=TRUE), sd=sd(!! varname, na.rm=TRUE), min = min(!! varname, na.rm=TRUE), max=max(!! varname, na.rm=TRUE), N=sum(as.numeric((!is.na(!! varname)))))
+  bmeans <- data %>% group_by(!! loc.unit) %>% summarise(meanx=mean(!! varname, na.rm=T), t.count=sum(as.numeric(!is.na(!! varname)))) 
+  bres <- bmeans %>% ungroup() %>% summarise(sd = sd(meanx, na.rm=TRUE), min = min(meanx, na.rm=TRUE), max=max(meanx, na.rm=TRUE), n=sum(as.numeric(!is.na(t.count))), `T-bar`=mean(t.count, na.rm=TRUE))
+  wdat <- data %>% group_by(!! loc.unit) %>% mutate(W.x = scale(!! varname, center=TRUE, scale=FALSE))
+  wres <- wdat %>% ungroup() %>% summarise(sd=sd(W.x, na.rm=TRUE), min=min(W.x, na.rm=TRUE), max=max(W.x, na.rm=TRUE))
+  # Loop to adjust the scales within group outputs against the overall mean
+  for(i in 2:3) {
+    wres[i] <- sum(ores[1], wres[i])
+  }
+  # Table Output
+  Variable <- matrix(c(quo_name(varname), "", ""), ncol=1)
+  Comparison <- matrix(c("Overall", "Between", "Within"), ncol=1)
+  Mean <- matrix(c(ores[1], "", ""), ncol=1)
+  Observations <- matrix(c(paste0("N = ", ores[5]), paste0("n = ", bres[4]), paste0("T-bar = ", round(bres[5], 4))), ncol=1)
+  Tab <- rbind(ores[2:4], bres[1:3], wres[1:3])
+  Tab <- cbind(Tab, Observations)
+  Tab <- cbind(Mean, Tab)
+  Tab <- cbind(Comparison, Tab)
+  Tab <- cbind(Variable, Tab)
+  
+  # Output
+  return(Tab)
+}
+
+XTSUM(base_ego,pglabnet,pid) # uses the function by providing the base dataset containing the data, the variable of interest, and the unit of observation (expects that data is in long format: unit-year specific observations)
+
+# some other helpful calculations:
+# exchange & expand on var1/var2 with your variables of interest
+
+# The within-person variance (by id): 
+#attention to not execute if you have a lot of individuals: helpful table when !=0 to get number of stable units
+data %>% group_by(pid) %>% summarise(sd(var1), sd(var2))
+
+# The within-wave variance (by wave):
+data %>% group_by(syear) %>% summarise(sd(var1), sd(var2))
+
+# And the overall variance:
+data %>% ungroup() %>% summarise(sd(var1), sd(var2))
+
+```
+
+---
+
+# Investigating missing data pattern
+
+We often want to have a quick overview of the patterns of missing data in our target sample. Common questions include: Do I have years were I have nearly no data? How many individuals provided data over the whole observation period (= how large would be the balanced panel)? To get such a missing data pattern, we can use the *md.pattern* command of the **mice** package.  
+
+```{r misp, include=TRUE,eval=FALSE,fig.show="hold",out.width="30%"}
+
+# analyse missing due to unit-nonresponse
+#expects that the values of netto that cannot be used have been set to missing=NA (e.g. if only personal interviews are used all values except those between 10 and 19 have been set to NA).
+
+misp <- base_ego_c %>% select(pid,syear,netto) %>% #subset data to indicate missingness due to unit nonresponse
+  pivot_wider(names_from = syear,values_from = netto, values_fill = NA)
+
+mice::md.pattern(misp, plot = TRUE, rotate.names = TRUE)
+
+# to missing data pattern because of item nonresponse we can use the dropped variable instead of netto
+# how to create the dropped variable is described in "Missing values and balance" earlier
+# simply set all variables that have dropped==1 to NA and you are good to go 
+```
+
+---
+# Pooled OLS
+
+We often want to have a quick overview of the patterns of missing data in our target sample. Common questions include: Do I have years were I have nearly no data? How many individuals provided data over the whole observation period (= how large would be the balanced panel)? To get such a missing data pattern, we can use the *md.pattern* command of the **mice** package.  
+
+```{r poolols, include=TRUE,eval=FALSE,fig.show="hold",out.width="30%"}
+
+model1<-lm(wage ~ marr, data=data)            #incorrect default S.E.
+
+library(sandwich)  # Adjust standard errors
+library(lmtest)    # Recalculate model errors with sandwich functions with coeftest()
+
+model1_robust_stata <- coeftest(model1,  #correct panel-robust S.E.
+                                vcov = vcovCL,
+                                type = "HC1",
+                                cluster = ~id) # Note HC3 would be more conservative and performs better with small n --> http://datacolada.org/99
+model1_robust_stata
+
+msummary(list("model1"=model1),vcov = ~id) # clustered standard errors
+
+#calculate 
+
+model2<-feols(wage ~ marr, data = data,panel.id = ~id)
+msummary(list("model2"=model2),vcov = ~id) # clustered standard errors
+```
+---
+# FD-estimator
+```{r fdest, include=TRUE,eval=FALSE,fig.show="hold",out.width="30%"}
+expanded <- data %>%  complete(nesting(id), time=full_seq(time, 1))
+
+expanded <- expanded %>% 
+  group_by(id) %>% 
+  mutate(d.wage = wage - dplyr::lag(wage),
+         d.marr = marr - dplyr::lag(marr)) %>% 
+  ungroup
+
+model2<-lm(d.wage ~ d.marr +0, data=expanded) #+0 suppresses the inclusion of an intercept
+summary(model2)
+
+#Plotting the differentiated data
+ggplot(data = expanded, aes(x = d.marr, y = d.wage))+
+  geom_point()+
+  geom_smooth(method = "lm",formula=y~0+x,se=FALSE)+
+  labs(x = "Delta Marriage",  y = "Delta Gross income [EUR]",color="") +
+  theme_bw()
+
+
+#PLM
+plm.fd <- plm(wage~marr+0, data = data, model = "fd")
+summary(plm.fd)
+```
+
+---
+# FE-estimator
+```{r feest, include=TRUE,eval=FALSE,fig.show="hold",out.width="30%"}
+library(fixest)  # Run models with feols()
+
+model3a <- feols(wage ~ marr | id,
+                            vcov = "hetero",
+                            data = data)
+
+summary(model3a) 
+#tidy(model3a)
+
+model3b <- feols(wage ~ marr | id,
+                               cluster = ~ id,
+                               data = data)
+
+tidy(model3b) 
+
+#PLM
+plm.fd <- plm(wage~marr+0, data = data, model = "within")
+summary(plm.fd)
+
+#Plotting the within transformed data
+
+data.fe<-data %>% group_by(id) %>% mutate(m.wage=mean(wage),
+                                          m.marr=mean(marr),
+                                          dm.wage=wage-m.wage,
+                                          dm.marr=marr-m.marr)
+
+summary(lm(dm.wage ~ dm.marr,data=data.fe))
+
+ggplot(data = data.fe, aes(x = dm.marr, y = dm.wage))+
+  geom_jitter(width = 0.01)+
+  geom_smooth(method = "lm",formula=y~x,se=FALSE)+
+  labs(x = "Marriage demeaned",  y = "Gross income [EUR] demeaned",color="") +
+  theme_bw()
+```
+---
+
+# Long vs. Wide Data: What’s the Difference? I
+
+<font size="4">- The difference between wide and long datasets is not how much information is stored in them but how the information is structured.
+
+<font size="4">- A **wide** format contains values that *do not* repeat (in the first column / ID column).
+
+<font size="4">- A **long** format contains values that *do* repeat (in the first column / ID column).
+
+<font size="4"> Here is a table in wide format:
+
+```{r test3, eval=TRUE, echo = FALSE}
+
+widedata <- data.frame(Name = c("Jon", "Bill", "Maria", "Ahmet", "Lea"),
+                 Age = c(23, 41, 32, 58, 26),
+                 COVID_t1 = c(1,0,0,0,0),
+                 COVID_t2 = c(0,0,0,0,0),
+                 COVID_t3 = c(0,0,1,0,0)
+                 )
+
+knitr::kable(widedata, format = 'html')
+```
+
+<font size="4"> Notice that every Person in this dataset has one and only one row of data. However, information on certain variables can be spread to multiple columns. Here information on whether a Person currently has contracted COVID is in three columns and the column name contains information how these differ (t1,t2,t3). 
+
+<font size="3">Inspired by Zach [@statology.org](https://www.statology.org/long-vs-wide-data/)
+---
+# Long vs. Wide Data: What’s the Difference? II
+
+<font size="4">Here is the same table in long format (only the first 3 Persons are shown)
+
+```{r test4, eval=TRUE, echo = FALSE}
+
+longdata <- data.frame(Name = c("Jon","Jon","Jon", "Bill","Bill","Bill", "Maria","Maria","Maria", "Ahmet","Ahmet","Ahmet","Lea","Lea","Lea"),
+                       Time = c(1,2,3,1,2,3,1,2,3,1,2,3,1,2,3),
+                       Age = c(23,23,23, 41,41,41, 32,32,32, 58,58,58, 26,26,26),
+                     COVID = c(1,0,0, 0,0,0, 0,0,1, 0,0,0, 0,0,0)
+                 )
+
+knitr::kable(rbind(longdata[1:9,],c("...","...","...")), format = 'html')
+```
+
+<font size="4"> Notice that now every Person has multiple data rows, but the information on the time of the COVID-infection is now stored in a new column **Time** rather than in multiple variable names.
+
+---
+# Long vs. Wide Data: What to remember
+
+- In **wide** format: 
+  - Every *entity* we want to analyse (individual/country/firm) has its unique row. 
+  - If more than one observation of the same variable exists (e.g. because we have multiple observations in time or because we have multiple observations of individuals within a firm) these observations are stored in several columns.
+  - The names of these columns contain information about how each entity is connected to each observation.
+    
+- In **long** format: 
+  - Every *observation* has its unique row. 
+  - Every entity we want to analyse is spread to multiple rows. 
+  - Every unique observation can be identified using a combination of the *entity* and one or more other columns (e.g. time, person, etc.) 
+  
+- When we analyse data, most often we need data in wide format. 
+
+- When we want to make figures, most often we need data in long format.
+
+---
+
+# The format of the SOEP (still unfinished)
+
+The SOEP datasets contains data from a Panel survey. Thus, it contains information on individuals that have filled in surveys (and often answered the same questions) at several points in time. 
+
+- The SOEP dataset stores information in a **wide** format only in special cases. Hence:  
+  - Information of each individual is stored in a unique row. 
+  - Multiple observations are stored in several columns.
+  - Information about the time the observation was collected is stored in the Name of the columns. 
+  - The time information is stored in the beginning of the variable names and range from `W1_` - `W24_`
+  
+Note that some information is only asked once because it remains constant or quasi constant in the short run (e.g. the birth year of respondents) Most often these variables start with `SD_`. 
+
+---
+
+class: center, middle
+
+# This is an uninspired thank you slide!
+
+The remaining course will continue in the R markdown file on working with panel data
+
+Feedback is appreciated: write me an [E-Mail](mailto:fabian.kalleitner@fu-berlin.de)
+
+Slides created via the R package [**xaringan**](https://github.com/yihui/xaringan).

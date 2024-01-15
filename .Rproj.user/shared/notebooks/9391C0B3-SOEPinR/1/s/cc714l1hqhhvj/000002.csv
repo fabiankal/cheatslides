@@ -1,0 +1,7 @@
+"0","ggplot(data=cars, aes(x=speed, y=dist)) + "
+"0","  geom_point() + "
+"0","  geom_smooth(method=""lm"",formula=  y~x) + "
+"0","  theme_classic(base_size=16) + #change look of the graph and increase base text size of everything"
+"0","  labs(x=""Speed"",y=""Breaking distance"") + # change different labels (also title and legend title)"
+"0","  scale_fill_brewer(palette = ""Set1"") +  #provide different color scheme"
+"0","  scale_x_continuous(guide = guide_axis(angle = 90),breaks=seq(1,25,1),limits=c(0,27)) # provide different axis specifications"

@@ -1,0 +1,367 @@
+#################################################
+#Title: Panel-Analysis
+#Author: Fabian Kalleitner
+#Purpose: Relationship between Marriages and Wages using artificial data following Bruederl and Ludwig 2015
+#Data: Artificial dataset
+#Version: V2.0
+#Date: 24-05-2022
+#################################################
+
+
+###################################################
+#install packages and preparation
+###################################################
+
+
+#rm(list = ls())     #clear/remove =rm everything at the start of a new session. Only needed when you want to ensure you start with a "clean" R environment 
+
+#install.packages("tidyverse") # package of packages This is Something like R 2.0. 
+#It installs a lot of packages especially dplyr for data wrangling and ggplot for data vizualization I will use tidy and not "basic R" because it is more common now
+
+
+###################################################
+#load packages
+###################################################
+
+# you always have to load packages at the start of a new R session (when you start R Studio or after you clean your environment (broomstick on the top right) -> )
+
+library("tidyverse") # R has no stop the line sign so it will automatically search for the end of the line and continue to the next line if it does not run into an unexpected symbol this is helpful if you want 
+# to avoid to long lines of code that become completely unreadable
+library(broom)           # Convert model objects into data frames
+library("haven")
+library("panelr")
+library("plm")
+
+###################################################
+# Create functions
+###################################################
+
+#the following function replicates stata's xtsum command to display within and between variance of certain variables
+
+XTSUM <- function(data, varname, unit) {
+  # Xtsum
+  varname <- enquo(varname)
+  loc.unit <- enquo(unit)
+  ores <- data %>% summarise(Mean=mean(!! varname, na.rm=TRUE), sd=sd(!! varname, na.rm=TRUE), min = min(!! varname, na.rm=TRUE), max=max(!! varname, na.rm=TRUE), N=sum(as.numeric((!is.na(!! varname)))))
+  bmeans <- data %>% group_by(!! loc.unit) %>% summarise(meanx=mean(!! varname, na.rm=T), t.count=sum(as.numeric(!is.na(!! varname)))) 
+  bres <- bmeans %>% ungroup() %>% summarise(sd = sd(meanx, na.rm=TRUE), min = min(meanx, na.rm=TRUE), max=max(meanx, na.rm=TRUE), n=sum(as.numeric(!is.na(t.count))), `T-bar`=mean(t.count, na.rm=TRUE))
+  wdat <- data %>% group_by(!! loc.unit) %>% mutate(W.x = scale(!! varname, center=TRUE, scale=FALSE))
+  wres <- wdat %>% ungroup() %>% summarise(sd=sd(W.x, na.rm=TRUE), min=min(W.x, na.rm=TRUE), max=max(W.x, na.rm=TRUE))
+
+  # Loop to adjust the scales within group outputs against the overall mean
+  for(i in 2:3) {
+    wres[i] <- sum(ores[1], wres[i])
+  }
+  # Table Output
+  Variable <- matrix(c(quo_name(varname), "", ""), ncol=1)
+  Comparison <- matrix(c("Overall", "Between", "Within"), ncol=1)
+  Mean <- matrix(c(ores[1], "", ""), ncol=1)
+  Observations <- matrix(c(paste0("N = ", ores[5]), paste0("n = ", bres[4]), paste0("T-bar = ", round(bres[5], 4))), ncol=1)
+  Tab <- rbind(ores[2:4], bres[1:3], wres[1:3])
+  Tab <- cbind(Tab, Observations)
+  Tab <- cbind(Mean, Tab)
+  Tab <- cbind(Comparison, Tab)
+  Tab <- cbind(Variable, Tab)
+  # Output
+  return(Tab)
+}
+
+###################################################
+#Import data
+###################################################
+
+#text data with delimiters (e.g. male,1,8,9,20,edu1,0)
+
+#read_delim
+#data <- read_delim(filepath, delim=",", col_names = TRUE)
+
+#expects the data to be located in the same folder as the . If this is not the case adapt accordingly
+
+data = read_dta("H:/FU BERLIN/Lehre/Working with the German Socio-Economic Panel/Brüderl/data and exercises/Artificial Data/Wage Premium.dta")  
+#for STATA data format one of the most popular statistic programs # from the haven package
+
+#manually enter data
+# data <- data.frame (id  = c(rep(1,6),rep(2,6),rep(3,6),rep(4,6)),
+#                   time = rep(1:6,4),
+#                   wage= c(1000,1050,950,1000,1100,900, 2000,1950,2050,2000,1950,2050,2900,3000,3100,3500,3450,3550,3950,4050,4000,4500,4600,4400),
+#                   wage3=c(1000,1050,950,1500,1600,1400,2000,1950,2050,2500,2450,2550,2900,3000,3100,3500,3450,3550,3950,4050,4000,4500,4600,4400),
+#                   marr=c(rep(0,15),rep(1,3),rep(0,3),rep(1,3))
+# )
+
+
+###################################################
+#View data
+###################################################
+#let's view our data
+view(data) #attention this might load some time if you have large datasets
+
+# list the variables in mydata
+names(data)
+# list the structure of mydata
+str(data)
+
+# print first 10 rows of mydata
+head(data, n=10)
+
+# print last 5 rows of mydata
+tail(data, n=5)
+
+#glimpse at the data - preferred with many collums
+glimpse(data)
+
+###################################################
+#Describe data
+###################################################
+
+summary(data)
+
+#PLM#######################
+data_panel <- pdata.frame(data, index = c("id", "time"))
+summary(data_panel)
+data_panel%>%is.pbalanced()
+#PLM#######################
+
+#PANELR####################
+data_panel <- panel_data(data, id = id, wave = time)
+line_plot(data_panel, wage)
+#PANELR####################
+
+
+na.pattern(dej[,c(2:4)])
+
+################################################################################
+#still draft of creating a functional plot indicating gaps in the panel data
+test<-data %>%
+  select(id, time) %>%
+  table %>% as.numeric() %>%  paste(collapse="") 
+
+split(test, ceiling(seq_along(test)/6))
+
+chunk2 <- function(x,n) split(x, cut(seq_along(x), n, labels = FALSE))
+
+
+asdf<-chunk2(test,4) 
+
+data %>%
+  select(id, time) %>% group_by(id) %>% 
+      summarise(wave_total=sum(!is.na(time)))
+
+
+data %>%
+  group_by(id) %>%
+  summarise(Number_Pattern = n(), 
+            Name_time = toString(unique(time)), 
+            Total_marr  = n_distinct(marr))
+################################################################################
+
+# The within-person variance (by id):
+data %>% group_by(id) %>% summarise(sd(wage), var(marr))
+
+# The within-wave variance (by wave):
+data %>% group_by(time) %>% summarise(sd(wage), var(marr))
+
+# And the overall variance:
+data %>% ungroup() %>% summarise(sd(wage), var(marr))
+
+#sample variance using XTSUM
+
+XTSUM(data,wage,id)
+XTSUM(data,marr,id)
+
+###################################################
+#Visualize data
+###################################################
+
+ggplot(data = data, aes(x = time, y = wage,group=as.factor(id),color=as.factor(marr))) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Time",  y = "Gross income [EUR]",color="") +
+  theme_bw() + 
+  theme(legend.position = "bottom") +
+  scale_color_discrete(labels = c("unmarried", "married"))
+
+###################################################
+#Cross-sectional OLS regression at T=4
+###################################################
+
+summary(lm(wage ~ marr, data=data %>% filter(time==4)))
+
+summary(glm(marr ~ wage, data=data %>% filter(time==4), family = binomial(link = "probit")))
+summary(glm(marr ~ wage, data=data %>% filter(time==4), family = binomial(link = "logit")))
+###################################################
+#Pooled OLS
+###################################################
+
+model1<-lm(wage ~ marr, data=data)            #incorrect default S.E.
+summary(model1)
+
+# Stata's robust standard errors with lm()
+library(sandwich)  # Adjust standard errors
+library(lmtest)    # Recalculate model errors with sandwich functions with coeftest()
+
+model1_robust_stata <- coeftest(model1,  #correct panel-robust S.E.
+                                vcov = vcovCL,
+                                type = "HC1",
+                                cluster = ~id) # Note HC3 would be more conservative and performs better with small n --> http://datacolada.org/99
+model1_robust_stata
+
+#PLM
+data_panel <- pdata.frame(data, index = c("id", "time"))
+plm.pols <- plm(wage~marr, data = data_panel, model = "pooling")
+summary(plm.pols)
+
+coeftest(plm.pols, vcov=vcovHC(plm.pols,type="HC1",cluster="group"))
+
+###################################################
+#First-differences estimator
+###################################################
+
+expanded <- data %>%  complete(nesting(id), time=full_seq(time, 1))
+
+expanded <- expanded %>% 
+  group_by(id) %>% 
+  mutate(d.wage = wage - dplyr::lag(wage),
+         d.marr = marr - dplyr::lag(marr)) %>% 
+  ungroup
+
+model2<-lm(d.wage ~ d.marr +0, data=expanded) #+0 suppresses the inclusion of an intercept
+summary(model2)
+
+#Plotting the differentiated data
+ggplot(data = expanded, aes(x = d.marr, y = d.wage))+
+  geom_point()+
+  geom_smooth(method = "lm",formula=y~0+x,se=FALSE)+
+  labs(x = "Delta Marriage",  y = "Delta Gross income [EUR]",color="") +
+  theme_bw()
+
+
+#PLM
+plm.fd <- plm(wage~marr+0, data = data, model = "fd")
+summary(plm.fd)
+
+###################################################
+#Fixed-Effects Regression (within estimator)
+###################################################
+
+library(fixest)  # Run models with feols()
+
+model3a <- feols(wage ~ marr | id,
+                            vcov = "hetero",
+                            data = data)
+
+summary(model3a) 
+#tidy(model3a)
+
+model3b <- feols(wage ~ marr | id,
+                               cluster = ~ id,
+                               data = data)
+
+tidy(model3b) 
+
+#PLM
+plm.fd <- plm(wage~marr+0, data = data, model = "within")
+summary(plm.fd)
+
+#Plotting the within transformed data
+
+data.fe<-data %>% group_by(id) %>% mutate(m.wage=mean(wage),
+                                          m.marr=mean(marr),
+                                          dm.wage=wage-m.wage,
+                                          dm.marr=marr-m.marr)
+
+summary(lm(dm.wage ~ dm.marr,data=data.fe))
+
+ggplot(data = data.fe, aes(x = dm.marr, y = dm.wage))+
+  geom_jitter(width = 0.01)+
+  geom_smooth(method = "lm",formula=y~x,se=FALSE)+
+  labs(x = "Marriage demeaned",  y = "Gross income [EUR] demeaned",color="") +
+  theme_bw()
+
+###################################################
+# Equivalent FE-Estimators
+###################################################
+#Least-squares Dummy Variable Regression(LSDV)
+
+model1<-lm(wage ~ marr + as.factor(id)+0, data=data)            #incorrect default S.E.
+summary(model1)
+
+coefs <- sapply(unique(data$id), function(i)lm(wage ~ marr, data=subset(data, id == i))$coef)
+coefs_t = as.data.frame(t(coefs))
+mean(coefs_t$marr,na.rm=TRUE)
+
+ggplot(data = data.fe, aes(x = marr, y = wage,group=id))+
+  geom_jitter(width = 0.01)+
+  geom_smooth(method = "lm",formula=y~x,se=FALSE)+
+  labs(x = "Marriage demeaned",  y = "Gross income [EUR] demeaned",color="") +
+  theme_bw()
+
+# Difference-in-Differences Estimator
+data.did <- data %>% mutate(treat=ifelse(id>=3,1,0),
+                            post=ifelse(time>=4,1,0),
+                            posttreat=post*treat)
+
+summary(lm(wage ~ post + treat + posttreat, data=data.did)) 
+
+
+###################################################
+#Period effects in the data that correlate with marr
+# Effect of marr is 0
+###################################################
+
+ggplot(data = data, aes(x = time, y = wage3,group=as.factor(id),color=as.factor(marr))) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Time",  y = "Gross income [EUR]",color="") +
+  theme_bw() + 
+  theme(legend.position = "bottom") +
+  scale_color_discrete(labels = c("unmarried", "married"))
+
+# Fixed-Effects Regression (within estimator)
+model4 <- feols(wage3 ~ marr | id,
+                 vcov = "hetero",
+                 data = data)
+summary(model4)
+
+# Solution: Add Fixed Period-Effects (twoway FE-Model)
+model5 <- feols(wage3 ~ marr + as.factor(time)| id,
+                vcov = "hetero",
+                data = data)
+summary(model5)
+
+# Alternatively
+summary(lm(wage3 ~ marr + as.factor(id) + as.factor(time) + 0, data=data))
+
+###################################################
+###################################################
+#  TO DO 
+###################################################
+###################################################  
+
+
+###################################################
+# Random-Effects Regression
+###################################################
+
+###################################################
+# Measurement error in the X-variable (marr)
+###################################################
+
+###################################################
+# Causality runs the other way: Reverse Causality
+# Effect of marr is 0
+###################################################
+
+###################################################
+# FE-estimator also works
+#  with a time trend in wages
+###################################################
+
+###################################################
+# Dynamic Models (seems to be nonsense)
+###################################################
+
+###################################################
+# Lagged effects models
+###################################################
+
+

@@ -1,0 +1,543 @@
+# ---
+# title: "Intro into Working with the SOEP in R day #2 - weighting, trends, and longitudinal analyses"
+# author(s): "Fabian Kalleitner"
+# date: "15/12/2023"
+# Purpose: "Using weights - Example + Exercise solution: weighted and unweighted summary statistics + calculating and using long. weights in simple trend analyses"
+# abstract: "share of Migrants (distinguishing 1st generation and 2nd generation migrants) in Germany in 2005, 2010, 2015 and 2020;
+#            average household income in Eastern and Western Germany in 2005, 2010, 2015 and 2020"
+# ---
+
+################################################################################
+#### Install and load packages--------------------------------------------------
+################################################################################
+
+#select packages to load
+libraries = c("haven", 
+              "labelled",
+              "tidytable",
+              "tidyverse", 
+              "tibble", 
+              "srvyr",
+              "ggthemes", 
+              "stargazer", 
+              "kableExtra" , 
+              "plm", 
+              "fixest",
+              "data.table",
+              "tidyfast",
+              "patchwork",
+              "vtable") 
+
+#install packages if not installed
+lapply(libraries, function(x) if (!(x %in% installed.packages())){
+  install.packages(x)
+})
+
+#load libraries
+lapply(libraries, library, quietly = TRUE, character.only = TRUE)
+
+################################################################################
+# Setting paths on your system--------------------------------------------------
+################################################################################
+
+# Note that I strongly advise to use relative paths but this is difficult 
+# because of the lab situation
+
+# Setting working directory (wd) on your machine 
+setwd('H:/FU BERLIN/SOEP/')
+
+# check: 
+getwd()
+
+# Setting an in-path where the data are stored: 
+# (this has to be adapted if you use a MAC/LINUX system)
+
+path_data <- './soepdata'
+
+################################################################################
+#### Creating 'your' dataset by loading and selecting the appropriate data------
+################################################################################
+
+# to get an overview of the tracking files and their purpose refer to:
+# http://companion.soep.de/Data%20Structure%20of%20SOEPcore/Data%20Sets.html#tracking-data
+
+# Read in basic data using the individual tracking file
+# base info already contains info about the migration background,--> migback
+# as well as the base region (East/west)--> sampreg 
+# + weighting factors --> phrf & pbleib
+data <- read_dta(file = file.path(path_data, 'ppathl.dta'),
+                 col_select = c(cid, pid, hid, syear, 
+                                psample, pop, netto, 
+                                sex, gebjahr, migback,sampreg, 
+                                parid,
+                                phrf, pbleib))
+
+#test variable label language using functions from the haven package (see also to_factor(v))
+var_label(data$netto) # variable label (=variable description)
+val_labels(data$netto) # value labels of this variable --> note continuous variables have no value labels
+
+# select only successful interviews in the relevant survey years 
+data <- data %>% 
+  filter(#gebjahr <= (syear-15), 
+         #gebjahr >= (syear-68), 
+         netto>=10, netto<=19)
+summary(data$netto) # check
+
+data <- data %>% 
+  filter(syear == 2005 | syear == 2010 | syear == 2015 | syear == 2020)
+
+table(data$syear) # check --> see also http://companion.soep.de/Target%20Population%20and%20Samples/Development%20of%20Sample%20Sizes.html#
+
+# store under base_ego 
+base_ego <- data
+
+# define function for adding specific variable from specific dataset to base_ego by specified keys 
+# does only need to be compiled once
+# note: leftjoin is equal to keep (master, match)
+
+attachVariable <- function(vars, from, to, keys){
+  data_new  <- read_dta(file = file.path(path_data, paste0(from, '.dta')), col_select = c(sapply(keys, paste), sapply(vars, paste)))
+  to <- left_join(to,data_new, by = keys)
+  return(to)
+}
+
+# to get an overview of the datasets and identifiers refer to:
+# http://companion.soep.de/Data%20Structure%20of%20SOEPcore/Data%20Sets.html
+
+# to get an in-depth overview of important identifiers see also:
+# http://companion.soep.de/Data%20Structure%20of%20SOEPcore/Data%20Identifier.html
+
+# add further variables from other datasets
+
+
+#function for future use: "quickly" look at a dataset and store its variables labels and value labels
+storelabels <- function(from){
+  data_lab  <- read_dta(file = file.path(path_data, paste0(from, '.dta')))
+  labelsum  <-data_lab %>%  
+    summarise(variable=names(.),
+              label=var_label(.),
+              values=val_labels(.)) %>% 
+    mutate(label=as.character(label),
+           values=as.character(values)) 
+  return(labelsum)
+}
+
+#store labels from hpathl and show them afterwards
+hpathl_l <- storelabels('hgen') # because this loads the full dataset this takes quite some time to load, so if possible avoid that and look at the documentation instead
+hpathl_l
+#view(hpathl_l) --> shows the full data table in a new tab
+
+#information on household weighting factors
+base_ego <- attachVariable(vars = c('hnetto','hbleib','hhrf','hsample','hpop'), 
+                           from = 'hpathl', 
+                           to = base_ego,
+                           keys = c('hid', 'syear'))
+
+# total net household income from hgen 
+base_ego <- attachVariable(vars='hghinc',
+                           'hgen', 
+                           base_ego, 
+                           keys = c('hid', 'syear'))
+
+# information on labor force status from pgen
+base_ego <- attachVariable(vars = c('pglfs','pgpartnr','pglabnet'), 
+                           from = 'pgen', 
+                           to = base_ego,
+                           keys = c('hid', 'pid', 'syear'))
+
+# information on labor force status from pl
+base_ego <- attachVariable(vars = c('plh0258_h'), 
+                           from = 'pl', 
+                           to = base_ego,
+                           keys = c('pid', 'syear'))
+
+# information on labor force status from pl
+base_ego <- attachVariable(vars = c('parid'), 
+                           from = 'ppathl', 
+                           to = base_ego,
+                           keys = c('pid', 'syear'))
+
+
+# further information on regions "bundesl?nder" etc would be in the dataset "regionl"
+
+# Overview dataset
+head(base_ego)
+stargazer(mylm1, type="text", out="./output/tab/regtable1.docx")
+
+
+msummary(list("model1"=mylm1),
+                  # Specify how to robustify/cluster the model
+                    vcov = list("iid", "robust", "stata", function(x) vcovCL(x, cluster = ~ pid)),
+                   add_rows = se_info)
+
+modelsummary(list("model1"=mylm1), vcov = list("classical"))
+modelsummary(list("model1"=mylm1), vcov = "robust")
+modelsummary(list("model1"=mylm1), vcov = "stata")
+modelsummary(list("model1"=mylm1), vcov = ~pid)
+################################################################################
+#### "cleaning" the dataset - setting missing values to NA ---------------------
+################################################################################
+
+# clean the data (important! check before what values indicate missing responses for which variable)
+# SOEP specific: pay attention if variables that contain negative values indicate substantive answers)
+# refer to: http://companion.soep.de/Data%20Structure%20of%20SOEPcore/Missing%20Conventions.html
+
+base_ego_c <- mutate_at(base_ego, vars(c( "pid", "hid","parid", "syear", "psample", "pop", "netto",
+                                          "sex", "migback", "sampreg",  "phrf", "pbleib","pglfs",
+                                          "hnetto","hbleib","hhrf","hsample","hpop" ,"hghinc")),
+                  list(~ ifelse( . %in% c(-8:-1), NA, .)))
+
+table(base_ego$hghinc[base_ego$hghinc<0]) #  a lot of values are missing of this variable seems like mostly due to the fact that the variable is -1 or -3
+
+#because we loaded the .dta files with the haven package using read_dta we can recover the variable labels by transforming the nominal and ordinal scaled variables into a factor using as_factor
+table(as_factor(base_ego$hghinc[base_ego$hghinc<0])) # -1 indicates no answer and -3 not valid
+
+prop.table(table(base_ego$hghinc!=-1,base_ego$syear),margin = 2) # check on missings by years --> no clear outliers
+
+################################################################################
+#### Recoding Variables --------------------------------------------------------
+################################################################################
+
+base_ego_c <-base_ego
+
+base_ego_c <- base_ego %>% drop_na() 
+
+# create dummies for the East/West indicator 
+val_labels(base_ego_c$sampreg) # quickly check labels and codes (other option look into codebook / paneldata.org)
+
+base_ego_c$westg = ifelse(is.na(base_ego_c$sampreg),NA,ifelse(base_ego_c$sampreg == 1, 1 , 0))
+
+# check whether we recoded correctly 
+table(base_ego_c$westg)
+table(base_ego_c$sampreg)
+
+
+# generate a dummy for unemployment and attach labels to the dummy
+#alternative mutate(unemp=case_when ...)
+
+base_ego_c <- base_ego_c %>% mutate(unemp = ifelse(pglfs == 6, 1, 0) # note missing values (NA) are automatically coded NA but better is to do that yourself
+)
+
+base_ego_c$unemp <- factor(base_ego_c$unemp,
+                           levels = c(0,1),
+                           labels = c("not unemployed", "unemployed")) # note that this approach is quite problamatic becausethe referene group is quite diverse
+
+table(base_ego_c$unemp, useNA = "always") #check
+
+################################################################################
+#### Analyses (unweighted and cross-sectionally weighted)-----------------------
+################################################################################
+
+#Calculate unweighted means within groups the fast way (see task 1 for the slow way)
+
+# assigning strings to the vector
+region <- list("westg")
+number <- c(1,2)
+
+# we define a small code, that will give us the UNWEIGTHED share of each group in the respective years (plus confidence interval)
+getmatrix <- function(dataset,group, number){
+  tabdata.long_number <- dataset %>% 
+    filter(!is.na(!!rlang::sym(group)) & !is.na(syear)) %>%
+    group_by(syear , na.rm = T) %>%
+    summarise( 
+      n=n(),
+      mean=mean(!!rlang::sym(group) , na.rm = T),
+      sd=sd(!!rlang::sym(group), na.rm = T),
+      condition = "unweighted" ,
+      group = print(group)
+    ) %>%
+    mutate( se=sd/sqrt(n))  %>%
+    mutate(ymax=mean+1.96*se, ymin=mean-1.96*se)
+  tabdata.long_number <- data.frame(tabdata.long_number <- tabdata.long_number[c("syear" , "group" , "condition" , "mean" , "ymin" , "ymax")])
+}
+
+# and put all of this together in a table 
+region_parts <- lapply(region,getmatrix,dataset=base_ego_c)
+regtab <- do.call("rbind", region_parts)
+
+# then we do the same for the WEIGHTED Shares 
+getweightedmatrix <- function(dataset,group, number){
+  tabdata.longw_number <- dataset %>% 
+    filter(!is.na(syear)) %>%
+    as_survey_design(weights = c(phrf)) %>% #HERE THE WEIGHTING IS HAPPENING 
+    group_by(syear , na.rm = T) %>%
+    summarise( 
+      n=n(),
+      mean=survey_mean(!!rlang::sym(group) , na.rm = T), #WEIGHTED VERSIONS OF MEAN AND SD ARE USED HERE
+      sd=survey_sd(!!rlang::sym(group), na.rm = T),
+      condition = "weighted" ,
+      group = print(group)
+    ) %>%
+    mutate( se=sd/sqrt(n))  %>%
+    mutate(ymax=mean+1.96*se, ymin=mean-1.96*se)
+  tabdata.longw_number <- data.frame(tabdata.longw_number[c("syear" , "group" , "condition" , "mean" , "ymin" , "ymax")])
+}
+
+# and create a table that contains the weighted shares
+wregion_parts <- lapply(region,getweightedmatrix,dataset=base_ego_c)
+wregtab <- do.call("rbind", wregion_parts)
+
+# here we glue the weighted and the unweighted table together (below each other)
+plotdata.regplot <- rbind(regtab, wregtab)
+
+plotdata.westg <- base_ego %>% #base dataset
+  drop_na(migback,syear) %>% # drop missing values in the grouping variable (not needed if this is done before)
+  group_by(migback,syear) %>% # declare how the proportions should be calculated (grouped)
+  summarise(n=n()) %>% # how much valid cases are existing per group
+  group_by(syear) %>%
+  mutate(prop = n/sum(n), # calculate share/proportion of factor within group
+         se=sqrt((prop*(1-prop))/sum(n)), # calculate standard error
+         ymax=prop+qnorm(0.975)*se, # calculate confidence interval of share
+         ymin=prop-qnorm(0.975)*se
+  )
+
+plotdata.westg.w <- base_ego_c %>% #base dataset
+  drop_na(migback,syear) %>% # drop missing values in the grouping variable (not needed if this is done before)
+  as_survey_design(weights = c(phrf)) %>% # weight data using the survey weights provided
+  group_by(migback,syear) %>% # group the data by grouping variable and the variable containing the proportions of interest (in this example westg)
+  summarise(n=survey_total(vartype = c("se"))) %>%  #calculate total weighted n
+  group_by(syear) %>%
+  mutate(prop = n/sum(n), #calculate proportions
+         se=sqrt((prop*(1-prop))/sum(n)),
+         ymax=prop+qnorm(0.975)*se, # calculate the 1/2 confidence interval for alpha = 0.05
+         ymin=prop-qnorm(0.975)*se)
+
+plotdata.westg.w2 <- base_ego %>% #base dataset
+  drop_na(migback,syear) %>% # drop missing values in the grouping variable (not needed if this is done before)
+  as_survey_design(weights = c(phrf)) %>% # weight data using the survey weights provided
+  group_by(syear,migback) %>% # group the data by grouping variable and the variable containing the proportions of interest (in this example westg)
+  summarise(prop = survey_prop())%>%
+  mutate(ymax=prop+qnorm(0.975)*prop_se,
+         ymin=prop-qnorm(0.975)*prop_se)
+
+################################################################################
+
+
+base_ego_p<-base_ego |> select (pid,syear,sex,parid,pglabnet,hid) # select relevant variables
+
+npartner <- base_ego_p |> filter (parid<0) #create dataset of those without a partner
+
+base_ego_p <- base_ego_p |> filter (parid>0) #create dataset of those with a partner
+
+partner<- base_ego_p %>% select(-c(parid)) %>% rename(parid=pid, #duplicate partner dataset and change variable names
+                                                         parhid=hid,
+                                                         partnersex=sex,
+                                                         partnerinc=pglabnet)
+
+mergepart <- left_join(partner,base_ego_p,by=c("parid","syear")) %>% #merge the base and partner dataset
+  bind_rows(npartner) #add those without partner
+
+mergepart <- mergepart |> mutate(rel_par_inc=pglabnet/(pglabnet+partnerinc)) 
+# note that this creates a lot of missing values also because people not employed are coded as missing an income and not as having an income of 0
+
+
+###############################################################################
+#this should only be used for missings due to item nonresponse --> -1/-3 --> -3 implausible value: Thus only for persons who actually got the question
+
+base_ego<- base_ego %>% mutate(dropped=ifelse(base_ego$pid %in% base_ego_c$pid,0,1)) # creates an indicator for the rows dropped
+# note that you have to convert every factor into a factor before using sumtable
+base_ego$migback<-as_factor(base_ego$migback) # converts migback into a factor
+sumtable(base_ego,group="dropped",group.test=TRUE) # creates a balance table with X2 tests for factors and F/T tests for continous variables
+
+#crosstable(base_ego,by="dropped", test=TRUE, funs=c(mean=mean, "std error"=sd)) %>% as_flextable() # other option using crosstable & flextable
+
+
+###############################################################################
+
+
+base_ego_pattern <- base_ego %>% 
+
+test<-base_ego %>% select(pid,syear,netto) %>%
+  pivot_wider(names_from = syear,values_from = netto, values_fill = NA) 
+
+
+
+
+
+################################################################################
+#### Plot data (unweighted and cross-sectionally weighted)---------------------
+################################################################################
+
+# in a stacked bar plot
+
+ggplot(data = plotdata.regplot,
+       aes(
+         x = syear,
+         y = mean,
+         ymin = ymin,
+         ymax = ymax ,
+         fill=interaction(group))) +
+  geom_bar(position="stack",
+           stat = "identity" ,
+           width = 2) +
+  geom_text(aes(label = paste0(round(mean*100,1),"%")), 
+            position = position_stack(vjust = 0.5), size = 2) + 
+  facet_wrap(~condition) +
+  labs(y = "Share of group", fill = "Migration bkg.", x = "Year") +
+  theme_hc()
+ggsave("./output/fig/regplot_stacked.png", units="in", width=5, height=3, type="cairo-png") 
+
+
+################################################################################
+#### Calculate and plot household income by region (East/West)
+#### (unweighted and cross-sectionally weighted)
+################################################################################
+
+# unweighted
+# create a small table that will become the basis of our graph 
+# containing the mean of life-satisfaction across unemployment states (+ Confidence Interval)
+# notice that by keeping only one individual per household (distinct function) we do not underestimate the confidence interval
+# instead of the person specific weight we use the household specific weight: hhrf
+plotdata.westg <- base_ego_c %>% drop_na(westg) %>% group_by(syear) %>% distinct(hid, .keep_all = TRUE) %>% ungroup %>%
+  group_by(westg,syear) %>%
+  summarise( n=n(),
+             mean=mean(hghinc , na.rm = T),
+             sd=sd(hghinc, na.rm = T)) %>%
+  mutate( se=sd/sqrt(n),
+          ci=se * qt((1-0.05)/2 + .5, n-1),
+          type="unweighted")  
+
+# weighted
+plotdata.westg.w <- base_ego_c %>% drop_na(westg) %>% group_by(syear) %>% distinct(hid, .keep_all = TRUE) %>% ungroup %>%
+  as_survey_design(weights = c(hhrf)) %>%
+  group_by(westg,syear) %>%
+  summarise( n=n(),
+             mean=survey_mean(hghinc , na.rm = T)) %>%
+  mutate(ci=mean_se * qt((1-0.05)/2 + .5, n-1),
+         type="weighted") 
+
+# here we glue the weighted and the unweighted table together (below each other)
+plotdata.regplot <- rbind(plotdata.westg, plotdata.westg.w)
+
+plotdata.regplot$westg<-as.factor(plotdata.regplot$westg)
+levels(plotdata.regplot$westg)<-c("East","West")
+
+# plot the data
+ggplot(data = plotdata.regplot) +
+  geom_bar(aes(x = syear, y = mean,fill=westg),
+           stat = "identity",
+           position=position_dodge(),
+           alpha = 0.9) +
+  geom_errorbar(
+    aes(x = syear, y = mean, group=westg, ymin = mean - ci,ymax = mean + ci),
+    position=position_dodge(width=4.5),
+    width = 0.4,
+    colour = "black",
+    size = 0.3) +
+  facet_wrap(~type) +
+  labs(y = "Mean income", fill = "Region", x = "Year",title="Mean income by region and year") +
+  theme_hc()
+
+# save the graph
+ggsave("./output/fig/income_byregion.png", units="in", width=4, height=3, type="cairo-png")
+
+#### lineplot would maybe be even better -> you could try that yourself
+
+################################################################################
+#### Calculate and plot household income by region (East/West)
+#### (balanced panel unweighted and longitudinally weighted)
+################################################################################
+
+# unweighted
+# create a small table that will become the basis of our graph 
+# containing the mean of life-satisfaction across unemployment states (+ Confidence Interval)
+plotdata.westg <- base_ego_c %>% drop_na(westg) %>% filter(!is.na(p_weight_n_f)) %>% group_by(syear) %>% distinct(hid, .keep_all = TRUE) %>% ungroup %>%
+  group_by(westg,syear) %>% 
+  summarise( n=n(),
+             mean=mean(hghinc , na.rm = T),
+             sd=sd(hghinc, na.rm = T)) %>%
+  mutate( se=sd/sqrt(n),
+          ci=se * qt((1-0.05)/2 + .5, n-1),
+          type="unweighted")  
+
+# weighted
+plotdata.westg.w <- base_ego_c %>% drop_na(westg) %>% filter(!is.na(p_weight_n_f)) %>% group_by(syear) %>% distinct(hid, .keep_all = TRUE) %>% ungroup %>%
+  as_survey_design(weights = c(p_weight_n_f)) %>%
+  group_by(westg,syear) %>%
+  summarise( n=n(),
+             mean=survey_mean(hghinc , na.rm = T)) %>%
+  mutate(ci=mean_se * qt((1-0.05)/2 + .5, n-1),
+         type="weighted") 
+
+# here we glue the weighted and the unweighted table together (below each other)
+plotdata.regplot <- rbind(plotdata.westg, plotdata.westg.w)
+
+plotdata.regplot$westg<-as.factor(plotdata.regplot$westg)
+levels(plotdata.regplot$westg)<-c("East","West")
+
+# plot the data
+ggplot(data = plotdata.regplot) +
+  geom_bar(aes(x = syear, y = mean,fill=westg),
+           stat = "identity",
+           position=position_dodge(),
+           alpha = 0.9) +
+  geom_errorbar(
+    aes(x = syear, y = mean, group=westg, ymin = mean - ci,ymax = mean + ci),
+    position=position_dodge(width=4.5),
+    width = 0.4,
+    colour = "black",
+    size = 0.3) +
+  facet_wrap(~type) +
+  labs(y = "Mean income", fill = "Region", x = "Year",title="Mean income by region and year") +
+  theme_hc()
+
+# save the graph
+ggsave("./output/fig/income_byregion_w.png", units="in", width=4, height=3, type="cairo-png")
+
+#### lineplot would maybe be even better -> you could try that yourself
+
+
+################################################################################
+#### Calculate and plot household income by unemployment status
+#### (balanced panel unweighted and longitudinally weighted)
+################################################################################
+
+# unweighted
+# create a small table that will become the basis of our graph 
+# containing the mean of life-satisfaction across unemployment states (+ Confidence Interval)
+plotdata.unemp <- base_ego_c %>% drop_na(unemp) %>% filter(!is.na(p_weight_n_f)) %>% group_by(syear) %>% distinct(hid, .keep_all = TRUE) %>% ungroup %>%
+  group_by(unemp,syear) %>% 
+  summarise( n=n(),
+             mean=mean(. , na.rm = T),
+             sd=sd(., na.rm = T)) %>%
+  mutate( se=sd/sqrt(n),
+          ci=se * qt((1-0.05)/2 + .5, n-1),
+          type="unweighted")  
+
+# weighted
+plotdata.unemp.w <- base_ego_c %>% drop_na(unemp) %>% filter(!is.na(p_weight_n_f)) %>% group_by(syear) %>% distinct(hid, .keep_all = TRUE) %>% ungroup %>%
+  as_survey_design(weights = c(p_weight_n_f)) %>%
+  group_by(unemp,syear) %>%
+  summarise( n=n(),
+             mean=survey_mean(hghinc , na.rm = T)) %>%
+  mutate(ci=mean_se * qt((1-0.05)/2 + .5, n-1),
+         type="weighted") 
+
+# here we glue the weighted and the unweighted table together (below each other)
+plotdata.uneplot <- rbind(plotdata.unemp, plotdata.unemp.w)
+
+plotdata.uneplot$unemp<-as.factor(plotdata.regplot$unemp)
+levels(plotdata.uneplot$unemp)<-c("East","West")
+
+# plot the data
+ggplot(data = plotdata.uneplot) +
+  geom_bar(aes(x = syear, y = mean,fill=unemp),
+           stat = "identity",
+           position=position_dodge(),
+           alpha = 0.9) +
+  geom_errorbar(
+    aes(x = syear, y = mean, group=unemp, ymin = mean - ci,ymax = mean + ci),
+    position=position_dodge(width=4.5),
+    width = 0.4,
+    colour = "black",
+    size = 0.3) +
+  facet_wrap(~type) +
+  labs(y = "Mean income", fill = "Region", x = "Year",title="Mean income by region and year") +
+  theme_hc()
+
+# save the graph
+ggsave("./output/fig/income_byunemp_w.png", units="in", width=4, height=3, type="cairo-png")
+
+#### lineplot would maybe be even better -> you could try that yourself
+
+
