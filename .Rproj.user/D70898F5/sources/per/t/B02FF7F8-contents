@@ -30,7 +30,6 @@ library("tidyverse") # R has no stop the line sign so it will automatically sear
 library(broom)           # Convert model objects into data frames
 library("haven")
 library("panelr")
-library("plm")
 
 ###################################################
 # Create functions
@@ -116,9 +115,9 @@ glimpse(data)
 summary(data)
 
 #PLM#######################
-data_panel <- pdata.frame(data, index = c("id", "time"))
-summary(data_panel)
-data_panel%>%is.pbalanced()
+# data_panel <- pdata.frame(data, index = c("id", "time"))
+# summary(data_panel)
+# data_panel%>%is.pbalanced()
 #PLM#######################
 
 #PANELR####################
@@ -131,27 +130,10 @@ na.pattern(dej[,c(2:4)])
 
 ################################################################################
 #still draft of creating a functional plot indicating gaps in the panel data
-test<-data %>%
-  select(id, time) %>%
-  table %>% as.numeric() %>%  paste(collapse="") 
+misp <- data %>% select(id,time,marr) %>% #subset data to indicate missingness due to unit nonresponse
+  pivot_wider(names_from = time,values_from = marr, values_fill = NA)
 
-split(test, ceiling(seq_along(test)/6))
-
-chunk2 <- function(x,n) split(x, cut(seq_along(x), n, labels = FALSE))
-
-
-asdf<-chunk2(test,4) 
-
-data %>%
-  select(id, time) %>% group_by(id) %>% 
-      summarise(wave_total=sum(!is.na(time)))
-
-
-data %>%
-  group_by(id) %>%
-  summarise(Number_Pattern = n(), 
-            Name_time = toString(unique(time)), 
-            Total_marr  = n_distinct(marr))
+mice::md.pattern(misp, plot = TRUE, rotate.names = TRUE)
 ################################################################################
 
 # The within-person variance (by id):
@@ -205,27 +187,37 @@ model1_robust_stata <- coeftest(model1,  #correct panel-robust S.E.
                                 cluster = ~id) # Note HC3 would be more conservative and performs better with small n --> http://datacolada.org/99
 model1_robust_stata
 
-#PLM
-data_panel <- pdata.frame(data, index = c("id", "time"))
-plm.pols <- plm(wage~marr, data = data_panel, model = "pooling")
-summary(plm.pols)
+#modelsummary
+library(modelsummary)
+msummary(list("model1"=model1),vcov = ~id)# clustered standard errors using modelsummary package
 
-coeftest(plm.pols, vcov=vcovHC(plm.pols,type="HC1",cluster="group"))
+#fixest
+library(fixest)
+model2<-feols(wage ~ marr, data = data, panel.id = ~id) # clustered standard errors using fixest package
+summary(model2)
+msummary(list("model2"=model2)) #no need to apply clustered se here because feols already accounts for that
+
+# #PLM
+# data_panel <- pdata.frame(data, index = c("id", "time"))
+# plm.pols <- plm(wage~marr, data = data_panel, model = "pooling")
+# summary(plm.pols)
+# 
+# coeftest(plm.pols, vcov=vcovHC(plm.pols,type="HC1",cluster="group"))
 
 ###################################################
 #First-differences estimator
 ###################################################
 
-expanded <- data %>%  complete(nesting(id), time=full_seq(time, 1))
+expanded <- data %>%  complete(nesting(id), time=full_seq(time, 1)) # expands data if not all id wave specific lines are present to calculate the difference
 
 expanded <- expanded %>% 
   group_by(id) %>% 
-  mutate(d.wage = wage - dplyr::lag(wage),
-         d.marr = marr - dplyr::lag(marr)) %>% 
+  mutate(d.wage = wage - dplyr::lag(wage), #calculates differences in wages between t and t-1 within individuals
+         d.marr = marr - dplyr::lag(marr)) %>% #calculates differences in marriage status between t and t-1 within individuals
   ungroup
 
 model2<-lm(d.wage ~ d.marr +0, data=expanded) #+0 suppresses the inclusion of an intercept
-summary(model2)
+summary(model2) 
 
 #Plotting the differentiated data
 ggplot(data = expanded, aes(x = d.marr, y = d.wage))+
@@ -234,9 +226,8 @@ ggplot(data = expanded, aes(x = d.marr, y = d.wage))+
   labs(x = "Delta Marriage",  y = "Delta Gross income [EUR]",color="") +
   theme_bw()
 
-
 #PLM
-plm.fd <- plm(wage~marr+0, data = data, model = "fd")
+plm.fd <- plm::plm(wage~marr+0, data = data, model = "fd") # we can let the PLM package do the differentiating for us
 summary(plm.fd)
 
 ###################################################

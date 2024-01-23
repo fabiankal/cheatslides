@@ -6,6 +6,7 @@ institute: "FU Berlin"
 date: "2023/12/22 (updated: `r Sys.Date()`)"
 output:
   xaringan::moon_reader:
+    css: ["default","default-fonts", "my-style.css"]
     lib_dir: libs
     self_contained: true
     nature:
@@ -38,16 +39,26 @@ pre {
 
 </style>
 
+```{css, include=FALSE}
 
-```{css, echo=FALSE}
-.scroll-100 {
-  max-height: 50px;
-  overflow-y: auto;
-  background-color: inherit;
-  overflow-x:scroll
+body, td {
+   font-size: 14px;
+}
+code.r{
+  font-size: 13px;
+}
+pre {
+  font-size: 13px
+}
+
+pre {
+  white-space: pre;
+  background: #F5F5F5;
+  max-width: 100%;
+  max-height: 35%;
+  overflow-y:auto;
 }
 ```
-
 
 ```{r setup, include=FALSE}
 options(htmltools.dir.version = FALSE)
@@ -821,13 +832,13 @@ Base R lm function. From ugly output to nice publishable tables. Calculating rob
 ---
 # Cross-sectional data analyses at a specific time point
 
-After subsetting the data to create the analytical sample and recoding the variables and specifying their character (factors) one can start calculating the regression model(s).
+After subsetting the data to create the analytical sample and recoding the variables and specifying their character (factors) one can start calculating the regression model(s). We start with a cross-sectional regression in the following form: $𝑦_𝑖=𝛽_0+𝛽_1 𝑥_𝑖+𝑢_𝑖$
 
 The basic function for calculating OLS regressions is *lm*.
 
-It is structured in the following way: `mylm <- lm(DV ~ IV + CV1 + .., data)`. 
+It is structured in the following way: `mylm <- lm(yi ~ x1i + x2i + .., data)`. 
 
-This saves the output as a list object `mylm` which enables you to create a simple summary output using `summary(mylm)`
+We store the output in a list object `mylm` which enables you to create a simple summary output using `summary(mylm)`
 
 ```{r cross1, include=TRUE,eval=FALSE,fig.show="hold",out.width="30%"}
 mylm1 <- lm(hghinc ~ sex + migback, data=base_ego_c %>% filter(syear==2010)) # select data only of one year and provide the model
@@ -963,12 +974,19 @@ mice::md.pattern(misp, plot = TRUE, rotate.names = TRUE)
 ---
 # Pooled OLS
 
-We often want to have a quick overview of the patterns of missing data in our target sample. Common questions include: Do I have years were I have nearly no data? How many individuals provided data over the whole observation period (= how large would be the balanced panel)? To get such a missing data pattern, we can use the *md.pattern* command of the **mice** package.  
+The simplest "longitudinal" analyses possible is to just pool the untransformed data from all cross-sections and analyse it together in one OLS regression.
+
+We calculate a pooled OLS regression in the following form: $𝑦_{𝑖𝑡}=𝛽_0+𝛽_1 𝑥_{𝑖𝑡}+𝑢_{𝑖𝑡}$
+
+To estimate accurate standard errors (accounting for the nested data structure), I use the "slow" approach via the **sandwich** and **lmtest** packages and the standard `lm` function as well as a faster approach using `feols` of the **fixest** package and `msummary` again.
+
 
 ```{r poolols, include=TRUE,eval=FALSE,fig.show="hold",out.width="30%"}
 
 model1<-lm(wage ~ marr, data=data)            #incorrect default S.E.
 
+#base lm and additional packages
+#load packages
 library(sandwich)  # Adjust standard errors
 library(lmtest)    # Recalculate model errors with sandwich functions with coeftest()
 
@@ -976,78 +994,81 @@ model1_robust_stata <- coeftest(model1,  #correct panel-robust S.E.
                                 vcov = vcovCL,
                                 type = "HC1",
                                 cluster = ~id) # Note HC3 would be more conservative and performs better with small n --> http://datacolada.org/99
-model1_robust_stata
+model1_robust_stata # display coefficients with robust SE
 
-msummary(list("model1"=model1),vcov = ~id) # clustered standard errors
+#modelsummary
+library(modelsummary)
+msummary(list("model1"=model1),vcov = ~id) # clustered standard errors using modelsummary package
 
-#calculate 
+#fixest
+library(fixest)
+model2<-feols(wage ~ marr, data = data, panel.id = ~id) # clustered standard errors using fixest package
+summary(model2)
+msummary(list("model2"=model2)) #no need to apply clustered se here because feols already accounts for that
 
-model2<-feols(wage ~ marr, data = data,panel.id = ~id)
-msummary(list("model2"=model2),vcov = ~id) # clustered standard errors
 ```
 ---
 # FD-estimator
+
+We calculate a pooled FE regression in the following form: $Δ𝑦_{𝑖𝑡}=𝛽_1 Δ𝑥_{𝑖𝑡}+Δ𝜖_{𝑖𝑡}$ and apply pooled OLS regression to the data transformed in this way.
+
+Differentiating the data can be done manually or with automatically using the **PLM** package.
+
 ```{r fdest, include=TRUE,eval=FALSE,fig.show="hold",out.width="30%"}
-expanded <- data %>%  complete(nesting(id), time=full_seq(time, 1))
+expanded <- data %>%  complete(nesting(id), time=full_seq(time, 1)) # expands data if not all id wave specific lines are present to calculate the difference
 
 expanded <- expanded %>% 
   group_by(id) %>% 
-  mutate(d.wage = wage - dplyr::lag(wage),
-         d.marr = marr - dplyr::lag(marr)) %>% 
+  mutate(d.wage = wage - dplyr::lag(wage), #calculates differences in wages between t and t-1 within individuals
+         d.marr = marr - dplyr::lag(marr)) %>% #calculates differences in marriage status between t and t-1 within individuals
   ungroup
 
 model2<-lm(d.wage ~ d.marr +0, data=expanded) #+0 suppresses the inclusion of an intercept
-summary(model2)
-
-#Plotting the differentiated data
-ggplot(data = expanded, aes(x = d.marr, y = d.wage))+
-  geom_point()+
-  geom_smooth(method = "lm",formula=y~0+x,se=FALSE)+
-  labs(x = "Delta Marriage",  y = "Delta Gross income [EUR]",color="") +
-  theme_bw()
-
+summary(model2) 
 
 #PLM
-plm.fd <- plm(wage~marr+0, data = data, model = "fd")
+plm.fd <- plm::plm(wage~marr+0, data = data, model = "fd") # we can let the PLM package do the differentiating for us
 summary(plm.fd)
+
 ```
 
 ---
 # FE-estimator
+
+We calculate a pooled FE regression in the following form: $𝑦_{𝑖𝑡}−\overline{𝑦_i}=𝛽_1 (𝑥_{𝑖𝑡}−\overline{𝑥_𝑖})+(𝜖_{𝑖𝑡}−\overline{𝜖_𝑖})$ and apply pooled OLS regression to the data transformed in this way. Note that the base regression is also often written as a 2SLD regression: $Y_{it}=β_1X_{1,it}+...+β_kX_{k,it}+α_i+u_i$ where $α_i$ are individual specific intercepts understood as the fixed effect of entity $i$. For details see [link](https://www.econometrics-with-r.org/10.3-fixed-effects-regression.html).
+
+The following example shows R-code for demeaning manually and for calculating the FE estimator automatically using `feols` from the **fixest** package. 
+
 ```{r feest, include=TRUE,eval=FALSE,fig.show="hold",out.width="30%"}
-library(fixest)  # Run models with feols()
 
-model3a <- feols(wage ~ marr | id,
-                            vcov = "hetero",
-                            data = data)
-
-summary(model3a) 
-#tidy(model3a)
-
-model3b <- feols(wage ~ marr | id,
-                               cluster = ~ id,
-                               data = data)
-
-tidy(model3b) 
-
-#PLM
-plm.fd <- plm(wage~marr+0, data = data, model = "within")
-summary(plm.fd)
-
-#Plotting the within transformed data
+#calculating the demeaned data
 
 data.fe<-data %>% group_by(id) %>% mutate(m.wage=mean(wage),
                                           m.marr=mean(marr),
                                           dm.wage=wage-m.wage,
                                           dm.marr=marr-m.marr)
 
-summary(lm(dm.wage ~ dm.marr,data=data.fe))
+mylm3 <- lm(dm.wage ~ dm.marr,data=data.fe) # calculating the regression using the transformed data 
+
+#Plotting the within transformed data
 
 ggplot(data = data.fe, aes(x = dm.marr, y = dm.wage))+
   geom_jitter(width = 0.01)+
   geom_smooth(method = "lm",formula=y~x,se=FALSE)+
   labs(x = "Marriage demeaned",  y = "Gross income [EUR] demeaned",color="") +
   theme_bw()
+
+# Run models with feols() from the fixest package
+library(fixest)  
+model3b <- feols(wage ~ marr | id,
+                               cluster = ~ id, # cluster standard errors (would also be done automatically)
+                               data = data)
+summary(model3b) 
+
+# #PLM
+# plm.fe <- plm(wage~marr+0, data = data, model = "within")
+# summary(plm.fe)
+
 ```
 ---
 
